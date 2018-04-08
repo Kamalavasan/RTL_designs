@@ -23,6 +23,8 @@ module input_layer# (
 	// parameters from axi_lite
 	input [C_S_AXI_ADDR_WIDTH -1] axi_address,
 	input [9:0] no_of_input_layers,
+	input [9:0] input_layer_row_size,
+	input [9:0] input_layer_col_size,
 	input [0:0] in_layer_ddr3_data_rdy,
 
 	// streaming data
@@ -35,20 +37,6 @@ module input_layer# (
 	input [0:0] input_layer_1_rdy, 
 	output[9:0] input_layer_1_id, 
 
-	output [STREAM_DATA_WIDTH-1:0] input_layer_2_data,
-	output[0:0] input_layer_2_valid,
-	input [0:0] input_layer_2_rdy,
-	output[9:0] input_layer_2_id,
-
-	output [STREAM_DATA_WIDTH-1:0] input_layer_3_data,
-	output[0:0] input_layer_3_valid,
-	input [0:0] input_layer_3_rdy,
-	output[9:0] input_layer_3_id,
-
-	output [STREAM_DATA_WIDTH-1:0] input_layer_4_data,
-	output[0:0] input_layer_4_valid,
-	input [0:0] input_layer_4_rdy,
-	output[9:0] input_layer_4_id,
 
 	// AXI signals
 	input  wire                                                    clk,				// logic will operate in same clock as axi clock
@@ -113,7 +101,7 @@ module input_layer# (
 	assign M_axi_awprot = 0;
 	assign M_axi_awqos = 0;
 
-	// Read Address COntrol Signals
+	// Read Address Control Signals
 	assign M_axi_arid = 1;
 	assign M_axi_arlen = C_S_AXI_BURST_LEN - 1;
 	assign M_axi_arsize = $clog2(C_S_AXI_DATA_WIDTH/8);;
@@ -129,7 +117,122 @@ module input_layer# (
 
 
 
+// state machine
+// one input layer will be processed at a time
+// this module will provide 3x3 inputs each clock
+// loop structure
+// foreach inputlayer
+//		foreach row
+//			foreach 3x3
+// dual port ram will be used 
+// one module will read fro ddr3 and write to block ram
+// 
 
 
+	reg [9:0] r_inputlayer_id;
+	reg [9:0] r_row_position_id;
+	reg [9:0] r_col_postion_id;
+
+	wire valid_transation = input_layer_1_valid & input_layer_1_rdy;
+	wire one_row_complete = (r_col_postion_id >= input_layer_col_size - 1) & valid_transation;
+	wire move_to_next_rows = (r_inputlayer_id >= no_of_input_layers - 1) & one_row_complete;
+
+
+//---------------------------------------------------------------------------------------------
+	// state machine for iteraating along
+	// input layers
+//---------------------------------------------------------------------------------------------
+	// provide 3x3 window on each clockcycle moving 
+	// along a row
+	always @(posedge clk) begin : proc_
+		if(~reset_n) begin
+			r_col_postion_id <= 0;
+		end else if(valid_transation)begin
+			 if(r_col_postion_id >= input_layer_col_size - 1) begin
+			 	r_col_postion_id <= 0;
+			 end else begin
+			 	r_col_postion_id <= r_col_postion_id + 1;
+			 end
+		end
+	end
+
+	// if a row completed move to same row 
+	// of next layer
+	always @(posedge clk) begin : proc_
+		if(~reset_n) begin
+			r_inputlayer_id <= 0;
+		end else if(one_row_complete)begin
+			 if(move_to_next_rows) begin
+			 	r_inputlayer_id <= 0;
+			 end else begin
+			 	r_inputlayer_id <= r_inputlayer_id + 1;
+			 end
+		end
+	end
+
+	// after completeing all same row id in
+	// all layers move to next row
+	always @(posedge clk) begin : proc_
+		if(~reset_n) begin
+			r_row_position_id <= 0;
+		end else if(move_to_next_rows)begin
+			r_row_position_id <= r_row_position_id + 1;
+		end
+	end
+
+
+//-----------------------------------------------------------------------------------------------
+//-------- AXI Address calculation related to input layer----------------------------------------
+//-----------------------------------------------------------------------------------------------
+
+	// each AXI burst should not cross 4k boundry
+	// max size for input layer is 55x55 bytes, which is  less than 4k
+	// all input layers should be 4k block aligned
+	// lets keep all rows aligned to 4bytes, as ddr3 width is 32 bit
+	// for simplifying further lets keep all rows aligned to 64 bytes
+	// initial plan is to keep 4 rows of input layers
+	// one input layer will require 4 * 64 = 256 bytes
+	// two blockrams will be used as  dual buffer
+
+
+	
+
+	//--------------------------------------------------------------------------------------------
+	//------------------next_required row and input_layer id--------------------------------------
+	//--------------------------------------------------------------------------------------------
+		reg [9:0] r_next_inputlayer_id;
+		reg [9:0] r_next_row_id;
+		reg [0:0] r_next_layer_row_fetched;
+		reg [0:0] r_current_layer_row_done;
+
+
+		always @(posedge clk) begin : proc_
+			if(~reset_n) begin
+				next_inputlayer_id <= 1;
+			end else if(r_inputlayer_id >= no_of_input_layers -1) begin
+				r_next_inputlayer_id <= 0;
+			end
+			else begin
+				r_next_inputlayer_id <= r_inputlayer_id + 1;
+			end
+		end
+
+		always @(posedge clk) begin : proc_
+			if(rst) begin
+				r_next_row_id <= 0;
+			end else if((r_inputlayer_id >= no_of_input_layers -1)) begin
+				r_next_row_id <= r_row_position_id + 1;
+			end
+		end
+
+		wire[31:0] next_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0};
+
+
+	//--------------------------------------------------------------------------------------------
+	//----------- logic for reading and providing required data-----------------------------------
+	//--------------------------------------------------------------------------------------------
+
+		
 
 endmodule
+
