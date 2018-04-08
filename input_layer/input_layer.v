@@ -208,31 +208,64 @@ module input_layer# (
 
 		always @(posedge clk) begin : proc_
 			if(~reset_n) begin
-				next_inputlayer_id <= 1;
-			end else if(r_inputlayer_id >= no_of_input_layers -1) begin
+				next_inputlayer_id <= 0;
+			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
 			end
-			else begin
+			else if(row_fetch_done)begin
 				r_next_inputlayer_id <= r_inputlayer_id + 1;
 			end
 		end
 
 		always @(posedge clk) begin : proc_
-			if(rst) begin
+			if(~reset_n) begin
 				r_next_row_id <= 0;
-			end else if((r_inputlayer_id >= no_of_input_layers -1)) begin
+			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_row_id <= r_row_position_id + 1;
 			end
 		end
 
-		wire[31:0] next_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0};
+		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0};
 
+
+	//--------------------------------------------------------------------------------------------
+	//----------- logic for writing required data in block ram-----------------------------------
+	//--------------------------------------------------------------------------------------------
+
+	wire next_blk_ram_write_address[7:0] = r_next_inputlayer_id[0] ? 32 : 0;
+	wire blk_ram_write_enable = M_axi_rvalid & M_axi_rready;
+	wire row_fetch_done = (blk_ram_wr_addr >= (next_blk_ram_write_address + 192) ? 1 :0 ) ;
+
+	reg [7:0] blk_ram_wr_addr;
+	always @(posedge clk) begin : proc_
+		if(~reset_n | row_fetch_done) begin
+			blk_ram_wr_addr <= next_blk_ram_write_address;
+		end else if(blk_ram_write_enable) begin
+			blk_ram_wr_addr <= blk_ram_wr_addr + 1;
+		end
+	end
+
+	ram64x256 ram64x256_inst_0(
+		.clock(clk),
+		.data(M_axi_rdata),
+		.rdaddress(),
+		.wraddress(blk_ram_wr_addr),
+		.wren(blk_ram_write_enable),
+		.q);
 
 	//--------------------------------------------------------------------------------------------
 	//----------- logic for reading and providing required data-----------------------------------
 	//--------------------------------------------------------------------------------------------
 
-		
+	// start ptoviding data with valid siginal if a row is fetched
+	wire data_is_available = ((next_inputlayer_id > r_inputlayer_id) | (r_next_row_id > r_row_position_id) ? 1 : 0);
+
+	reg[7:0] row_1[0:5];
+	reg[7:0] row_2[0:5];
+	reg[7:0] row_3[0:5];
+
+	
+
 
 endmodule
 
