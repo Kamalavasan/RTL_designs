@@ -260,12 +260,105 @@ module input_layer# (
 	// start ptoviding data with valid siginal if a row is fetched
 	wire data_is_available = ((next_inputlayer_id > r_inputlayer_id) | (r_next_row_id > r_row_position_id) ? 1 : 0);
 
-	reg[7:0] row_1[0:5];
-	reg[7:0] row_2[0:5];
-	reg[7:0] row_3[0:5];
+	reg [2:0] r_row_select;
+	reg [7:0] rdaddress
+	reg [1:0] r_data_init;
 
-	
+	always @(posedge clk) begin : proc_
+		if(~reset_n || r_row_select >=4) begin
+			r_row_select <= 0;
+		end else begin
+			r_row_select <= r_row_select +1;
+		end
+	end
 
+	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
+	row_fifo row_fifo_inst1(.clk(clk), 
+							.reset_n(reset_n), 
+							.pop(pop_fifo), 
+							.data_in(), 
+							.push_4(), 
+							.init_data(), 
+							.pop_data()
+							);
+
+	row_fifo row_fifo_inst1(.clk(clk), 
+							.reset_n(reset_n), 
+							.pop(pop_fifo), 
+							.data_in(), 
+							.push_4(), 
+							.init_data(), 
+							.pop_data()
+							);
+
+	row_fifo row_fifo_inst1(.clk(clk), 
+							.reset_n(reset_n), 
+							.pop(pop_fifo), 
+							.data_in(), 
+							.push_4(), 
+							.init_data(r_data_init), 
+							.pop_data()
+							);
+
+	always @(posedge clk) begin : proc_
+		if(~reset_n || r_data_init >=3) begin
+			r_data_init <= 0;
+		end else if(one_row_complete | r_data_init != 0) begin
+			r_data_init <= r_data_init + 1;
+		end
+	end
+
+    always @(posedge clk) begin : proc_
+    	if(~reset_n) begin
+    		 <= 0;
+    	end else if(r_data_init != 0)begin
+    		 case(r_data_init)
+    		 	3'b001: ;
+    		 	3'b010:
+    		 	3'b011:
+    		 endcase
+    	end else if() begin
+
+    	end
+    end
+
+
+endmodule
+
+
+
+module row_fifo(
+	input clk,
+	input reset_n,
+	input pop,
+	input[63:0] data_in,
+	input push_4,
+	input init_data,
+	output pop_data);
+
+	reg [63:0] r_fifo;
+
+	always @(posedge clk) begin : proc_
+		if(~reset_n) begin
+			r_fifo[31:0] <= 0;
+		end else if(init_data | push_4) begin
+			r_fifo[31:0] <= data_in[31:0];
+		end
+		else if(pop) begin
+			r_fifo[31:8] <= r_fifo[23:0];
+		end
+	end
+
+	always @(posedge clk) begin : proc_
+		if(~reset_n) begin
+			r_fifo[63:32] <= 0;
+		else if(init_data) begin
+			r_fifo[63:32] <= data_in[63:32];
+		end
+		end else if(pop) begin
+			r_fifo[63:32] <= r_fifo[55:24];
+		end
+	end
 
 endmodule
 
