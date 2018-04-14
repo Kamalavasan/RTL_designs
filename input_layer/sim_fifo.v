@@ -34,13 +34,13 @@ module sim_fifo(
 	wire [3:0] count;
 
 	reg_fifo reg_fifo_inst(
-	.clk(clk),
-	.reset_n(reset_n),
-	.data_in(data_in),
-	.push(push),
-	.pop(pop),
-	.data_o(data_o),
-	.count(count)
+		.clk(clk),
+		.reset_n(reset_n),
+		.data_in(data_in),
+		.push(push),
+		.pop(pop),
+		.data_o(data_o),
+		.count(count)
 	);
 
 	initial begin
@@ -63,8 +63,8 @@ module sim_fifo(
 		#10
 		push = 0;
 		pop = 1;
-		#10000
-		$finish();
+		//#10000
+		//$finish();
 	end
 
 	always #5 clk = ~clk;
