@@ -48,7 +48,7 @@ module sim_fifo(
 		reset_n = 0;
 		push = 0;
 		pop = 0;
-		#40
+		#400
 		reset_n = 1;
 		#10
 		data_in = 64'h2343253267384758;
