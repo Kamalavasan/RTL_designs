@@ -64,7 +64,7 @@ module reg_fifo(
 	reg[3:0] r_ptr;
 	reg[3:0] w_ptr;
 
-	wire [3:0] w_ptr_next = (w_ptr +8 >= 12) ?  w_ptr -3 : w_ptr +8;
+	wire [3:0] w_ptr_next = (w_ptr +8 >= 12) ?  w_ptr - 4 : w_ptr +8;
 	wire [3:0] r_ptr_next = (r_ptr +1 >= 12) ?  r_ptr -11 : r_ptr +1;
 
     assign count =  (w_ptr >= r_ptr) ? w_ptr - r_ptr : 11- r_ptr + w_ptr;
@@ -72,7 +72,7 @@ module reg_fifo(
 	always @(posedge clk) begin : proc_fifo_rpt
 		if(~reset_n) begin
 			r_ptr <= 0;
-		end else if(pop & count > 3  ) begin
+		end else if(pop & count > 3 ) begin
 			r_ptr <= r_ptr_next ;
 		end
 	end
