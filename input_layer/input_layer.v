@@ -10,18 +10,19 @@
 // each  layer irrespective of its actual size
 // 
 
-#define STREAM_DATA_WIDTH 72 // 3x3x9
+
 
 module input_layer# (
 
             parameter                           C_S_AXI_ID_WIDTH              =     3,
             parameter                           C_S_AXI_ADDR_WIDTH            =     32,
             parameter                           C_S_AXI_DATA_WIDTH            =     64,
-            parameter                           C_S_AXI_BURST_LEN             =     8
-            
+            parameter                           C_S_AXI_BURST_LEN             =     8,
+            parameter                           STREAM_DATA_WIDTH             =     72
+             
     ) (
 	// parameters from axi_lite
-	input [C_S_AXI_ADDR_WIDTH -1] axi_address,
+	input [C_S_AXI_ADDR_WIDTH -1 : 0] axi_address,
 	input [9:0] no_of_input_layers,
 	input [9:0] input_layer_row_size,
 	input [9:0] input_layer_col_size,
@@ -93,8 +94,8 @@ module input_layer# (
 // axi settings
 	// Write Address Control Signals
 	assign M_axi_awid = 0;
-	assign M_axi_awlen = C_S_AXI_BURST_LEN-1;
-	assign M_axi_awsize = $clog2(C_S_AXI_DATA_WIDTH/8);
+	assign M_axi_awlen = 8'h4;
+	assign M_axi_awsize = 3;
 	assign M_axi_awburst = 1;
 	assign M_axi_awlock = 0;
 	assign M_axi_awcache = 4'b0011;
@@ -103,13 +104,27 @@ module input_layer# (
 
 	// Read Address Control Signals
 	assign M_axi_arid = 1;
-	assign M_axi_arlen = C_S_AXI_BURST_LEN - 1;
-	assign M_axi_arsize = $clog2(C_S_AXI_DATA_WIDTH/8);;
+	assign M_axi_arlen = 8'h4;
+	assign M_axi_arsize = 3;
 	assign M_axi_arburst = 1;
 	assign M_axi_arlock = 0;
 	assign M_axi_arcache = 4'b0011;
 	assign M_axi_arprot = 0;
 	assign M_axi_arqos = 0;
+
+
+	// tying write port to ground
+	assign M_axi_awaddr = 0;
+	assign M_axi_awvalid = 0;
+
+	assign M_axi_wdata  = 0;
+	assign M_axi_wstrb = 0;
+	assign M_axi_wlast = 0;
+	assign M_axi_wvalid  = 0;
+
+    assign M_axi_araddr = next_AXI_burst_address;
+
+
 
 //---------------------------------------------------------------------------------
 //---------------------------Implementation----------------------------------------
@@ -144,7 +159,7 @@ module input_layer# (
 //---------------------------------------------------------------------------------------------
 	// provide 3x3 window on each clockcycle moving 
 	// along a row
-	always @(posedge clk) begin : proc_
+	always @(posedge clk) begin : proc_r_col_postion_id
 		if(~reset_n) begin
 			r_col_postion_id <= 0;
 		end else if(valid_transation)begin
@@ -158,7 +173,7 @@ module input_layer# (
 
 	// if a row completed move to same row 
 	// of next layer
-	always @(posedge clk) begin : proc_
+	always @(posedge clk) begin : proc_r_inputlayer_id
 		if(~reset_n) begin
 			r_inputlayer_id <= 0;
 		end else if(one_row_complete)begin
@@ -172,7 +187,7 @@ module input_layer# (
 
 	// after completeing all same row id in
 	// all layers move to next row
-	always @(posedge clk) begin : proc_
+	always @(posedge clk) begin : proc_r_row_position_id
 		if(~reset_n) begin
 			r_row_position_id <= 0;
 		end else if(move_to_next_rows)begin
@@ -207,8 +222,8 @@ module input_layer# (
 
 
 		always @(posedge clk) begin : proc_
-			if(~reset_n) begin
-				next_inputlayer_id <= 0;
+			if(~reset_n | in_layer_ddr3_data_rdy) begin
+				r_next_inputlayer_id <= 0;
 			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
 			end
@@ -217,13 +232,15 @@ module input_layer# (
 			end
 		end
 
-		always @(posedge clk) begin : proc_
-			if(~reset_n) begin
+		always @(posedge clk) begin : proc_r_next_row_id
+			if(~reset_n | in_layer_ddr3_data_rdy) begin
 				r_next_row_id <= 0;
 			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_row_id <= r_row_position_id + 1;
 			end
 		end
+
+		wire fetch_rows = (r_next_inputlayer_id <= r_inputlayer_id ? 1 : 0);
 
 		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0};
 
@@ -232,12 +249,14 @@ module input_layer# (
 	//----------- logic for writing required data in block ram-----------------------------------
 	//--------------------------------------------------------------------------------------------
 
-	wire next_blk_ram_write_address[7:0] = r_next_inputlayer_id[0] ? 32 : 0;
+	wire [7:0] next_blk_ram_write_address;
+	assign  next_blk_ram_write_address = (r_next_inputlayer_id[0] ? 8'd32 : 8'd0);
+	
 	wire blk_ram_write_enable = M_axi_rvalid & M_axi_rready;
-	wire row_fetch_done = (blk_ram_wr_addr >= (next_blk_ram_write_address + 192) ? 1 :0 ) ;
+	wire row_fetch_done = M_axi_rready & M_axi_rvalid & M_axi_rlast;
 
 	reg [7:0] blk_ram_wr_addr;
-	always @(posedge clk) begin : proc_
+	always @(posedge clk) begin : proc_blk_ram_wr_addr
 		if(~reset_n | row_fetch_done) begin
 			blk_ram_wr_addr <= next_blk_ram_write_address;
 		end else if(blk_ram_write_enable) begin
@@ -245,26 +264,71 @@ module input_layer# (
 		end
 	end
 
-	ram64x256 ram64x256_inst_0(
-		.clock(clk),
-		.data(M_axi_rdata),
-		.rdaddress(),
-		.wraddress(blk_ram_wr_addr),
-		.wren(blk_ram_write_enable),
-		.q);
+//	ram64x256 ram64x256_inst_0(
+//		.clock(clk),
+//		.data(M_axi_rdata),
+//		.rdaddress(),
+//		.wraddress(blk_ram_wr_addr),
+//		.wren(blk_ram_write_enable),
+//		.q);
 
 	//--------------------------------------------------------------------------------------------
 	//----------- logic for reading and providing required data-----------------------------------
 	//--------------------------------------------------------------------------------------------
 
+
+	reg[3:0] axi_read_FSM;
+
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			axi_read_FSM <= 0;
+		end else begin
+			case(axi_read_FSM) 
+				4'b0000 : if(in_layer_ddr3_data_rdy & fetch_rows) axi_read_FSM <= 4'b0001;
+				4'b0001 : if(M_axi_arvalid && M_axi_arready) axi_read_FSM <= 4'b0010;
+				4'b0010 : if(M_axi_rready & M_axi_rvalid & M_axi_rlast) axi_read_FSM <= 4'b0000;
+			endcase
+		end
+	end
+
+	reg r_M_axi_rready;
+	always @(posedge clk) begin
+		if( ~reset_n || M_axi_rready & M_axi_rvalid & M_axi_rlast)
+       		r_M_axi_rready <= 0;
+       	else if(M_axi_rvalid)begin
+       		r_M_axi_rready <= 1;
+       	end
+    end
+    assign M_axi_rready = r_M_axi_rready;
+
+
+    reg[31:0] r_counter_read;
+    always @(posedge clk) begin 
+        if(~reset_n || r_counter_read > 32'h10000000) 
+            r_counter_read <= 32'h01000000;
+        else if(M_axi_arvalid && M_axi_arready) 
+            r_counter_read <= r_counter_read + (C_S_AXI_DATA_WIDTH * (C_S_AXI_BURST_LEN))/8;
+    end
+
+
+    reg r_M_axi_arvalid;
+    always @(posedge clk) begin
+        if(~reset_n || (M_axi_arvalid && M_axi_arready)) begin
+            r_M_axi_arvalid <= 0;
+        end else if(axi_read_FSM == 4'b0001 & ~r_M_axi_arvalid) begin
+            r_M_axi_arvalid <= 1;
+        end
+    end
+    assign M_axi_arvalid = r_M_axi_arvalid;
+
 	// start ptoviding data with valid siginal if a row is fetched
-	wire data_is_available = ((next_inputlayer_id > r_inputlayer_id) | (r_next_row_id > r_row_position_id) ? 1 : 0);
+	wire data_is_available = ((r_next_inputlayer_id > r_inputlayer_id) | (r_next_row_id > r_row_position_id) ? 1 : 0);
 
 	reg [2:0] r_row_select;
-	reg [7:0] rdaddress
+	reg [7:0] rdaddress;
 	reg [1:0] r_data_init;
 
-	always @(posedge clk) begin : proc_
+	always @(posedge clk) begin : proc_r_row_select
 		if(~reset_n || r_row_select >=4) begin
 			r_row_select <= 0;
 		end else begin
@@ -273,92 +337,9 @@ module input_layer# (
 	end
 
 	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
-	row_fifo row_fifo_inst1(.clk(clk), 
-							.reset_n(reset_n), 
-							.pop(pop_fifo), 
-							.data_in(), 
-							.push_4(), 
-							.init_data(), 
-							.pop_data()
-							);
 
-	row_fifo row_fifo_inst1(.clk(clk), 
-							.reset_n(reset_n), 
-							.pop(pop_fifo), 
-							.data_in(), 
-							.push_4(), 
-							.init_data(), 
-							.pop_data()
-							);
-
-	row_fifo row_fifo_inst1(.clk(clk), 
-							.reset_n(reset_n), 
-							.pop(pop_fifo), 
-							.data_in(), 
-							.push_4(), 
-							.init_data(r_data_init), 
-							.pop_data()
-							);
-
-	always @(posedge clk) begin : proc_
-		if(~reset_n || r_data_init >=3) begin
-			r_data_init <= 0;
-		end else if(one_row_complete | r_data_init != 0) begin
-			r_data_init <= r_data_init + 1;
-		end
-	end
-
-    always @(posedge clk) begin : proc_
-    	if(~reset_n) begin
-    		 <= 0;
-    	end else if(r_data_init != 0)begin
-    		 case(r_data_init)
-    		 	3'b001: ;
-    		 	3'b010:
-    		 	3'b011:
-    		 endcase
-    	end else if() begin
-
-    	end
-    end
 
 
 endmodule
 
-
-
-module row_fifo(
-	input clk,
-	input reset_n,
-	input pop,
-	input[63:0] data_in,
-	input push_4,
-	input init_data,
-	output pop_data);
-
-	reg [63:0] r_fifo;
-
-	always @(posedge clk) begin : proc_
-		if(~reset_n) begin
-			r_fifo[31:0] <= 0;
-		end else if(init_data | push_4) begin
-			r_fifo[31:0] <= data_in[31:0];
-		end
-		else if(pop) begin
-			r_fifo[31:8] <= r_fifo[23:0];
-		end
-	end
-
-	always @(posedge clk) begin : proc_
-		if(~reset_n) begin
-			r_fifo[63:32] <= 0;
-		else if(init_data) begin
-			r_fifo[63:32] <= data_in[63:32];
-		end
-		end else if(pop) begin
-			r_fifo[63:32] <= r_fifo[55:24];
-		end
-	end
-
-endmodule
 
