@@ -15,6 +15,9 @@ module top_sim();
 		reg clk;
 		reg reset_n;
 
+		wire [71:0] data_o;
+		wire  		valid_o;
+
 
 		wire [C_S_AXI_ID_WIDTH-1:0] w_AXI_AWID;
 		wire [C_S_AXI_ADDR_WIDTH-1:0] w_AXI_AWADDR;
@@ -182,10 +185,10 @@ module top_sim();
 			.input_layer_row_size(55),
 			.input_layer_col_size(55),
 			.in_layer_ddr3_data_rdy(1'b1),
-			.input_layer_1_data(),
+			.input_layer_1_data(data_o),
 			.input_layer_1_valid(),
 			.input_layer_1_rdy(1'b1), 
-			.input_layer_1_id(), 
+			.input_layer_1_id(valid_o), 
 
 
 			.clk(clk),				

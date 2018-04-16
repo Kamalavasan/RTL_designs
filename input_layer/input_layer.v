@@ -104,7 +104,7 @@ module input_layer# (
 
 	// Read Address Control Signals
 	assign M_axi_arid = 1;
-	assign M_axi_arlen = 8'h4;
+	assign M_axi_arlen = 8'h17;
 	assign M_axi_arsize = 3;
 	assign M_axi_arburst = 1;
 	assign M_axi_arlock = 0;
@@ -151,6 +151,7 @@ module input_layer# (
 	wire valid_transation = input_layer_1_valid & input_layer_1_rdy;
 	wire one_row_complete = (r_col_postion_id >= input_layer_col_size - 1) & valid_transation;
 	wire move_to_next_rows = (r_inputlayer_id >= no_of_input_layers - 1) & one_row_complete;
+	wire layer_complete = (r_row_position_id >= input_layer_row_size ? 1 : 0);
 
 
 //---------------------------------------------------------------------------------------------
@@ -160,7 +161,7 @@ module input_layer# (
 	// provide 3x3 window on each clockcycle moving 
 	// along a row
 	always @(posedge clk) begin : proc_r_col_postion_id
-		if(~reset_n) begin
+		if(~reset_n | layer_complete) begin
 			r_col_postion_id <= 0;
 		end else if(valid_transation)begin
 			 if(r_col_postion_id >= input_layer_col_size - 1) begin
@@ -174,7 +175,7 @@ module input_layer# (
 	// if a row completed move to same row 
 	// of next layer
 	always @(posedge clk) begin : proc_r_inputlayer_id
-		if(~reset_n) begin
+		if(~reset_n | layer_complete) begin
 			r_inputlayer_id <= 0;
 		end else if(one_row_complete)begin
 			 if(move_to_next_rows) begin
@@ -190,10 +191,12 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_row_position_id
 		if(~reset_n) begin
 			r_row_position_id <= 0;
-		end else if(move_to_next_rows)begin
+		end else if(move_to_next_rows & (r_row_position_id < input_layer_row_size))begin
 			r_row_position_id <= r_row_position_id + 1;
 		end
 	end
+
+	
 
 
 //-----------------------------------------------------------------------------------------------
@@ -272,6 +275,21 @@ module input_layer# (
 //		.wren(blk_ram_write_enable),
 //		.q);
 
+
+	wire [63:0] dual_buffer_inst_doutb;
+	reg [7:0] addrb;
+	dual_buffer dual_buffer_inst
+  (
+	    .clka(clk),
+	    .ena(1'b1), 
+	    .wea(blk_ram_write_enable), 
+	    .addra(next_blk_ram_write_address), 
+	    .dina(M_axi_rdata),
+	    .clkb(clk),
+	    .enb(1'b1), 
+	    .addrb(addrb), 
+	    .doutb(dual_buffer_inst_doutb) 
+  );
 	//--------------------------------------------------------------------------------------------
 	//----------- logic for reading and providing required data-----------------------------------
 	//--------------------------------------------------------------------------------------------
@@ -301,16 +319,6 @@ module input_layer# (
     end
     assign M_axi_rready = r_M_axi_rready;
 
-
-    reg[31:0] r_counter_read;
-    always @(posedge clk) begin 
-        if(~reset_n || r_counter_read > 32'h10000000) 
-            r_counter_read <= 32'h01000000;
-        else if(M_axi_arvalid && M_axi_arready) 
-            r_counter_read <= r_counter_read + (C_S_AXI_DATA_WIDTH * (C_S_AXI_BURST_LEN))/8;
-    end
-
-
     reg r_M_axi_arvalid;
     always @(posedge clk) begin
         if(~reset_n || (M_axi_arvalid && M_axi_arready)) begin
@@ -321,23 +329,114 @@ module input_layer# (
     end
     assign M_axi_arvalid = r_M_axi_arvalid;
 
-	// start ptoviding data with valid siginal if a row is fetched
-	wire data_is_available = ((r_next_inputlayer_id > r_inputlayer_id) | (r_next_row_id > r_row_position_id) ? 1 : 0);
+	
 
-	reg [2:0] r_row_select;
+
+	//-----------------------------------------------------------------------------------------------------
+	//--------------- Reading from block ram and feeding to logic -----------------------------------------
+	//-----------------------------------------------------------------------------------------------------
+
+	wire [3:0] fifo_count_0;
+	wire [3:0] fifo_count_1;
+	wire [3:0] fifo_count_2;
+
+	wire [23:0] data_o_0;
+	wire [23:0] data_o_1;
+	wire [23:0] data_o_2;
+
+	reg r_push_0;
+	reg r_push_1;
+	reg r_push_2;
+
+	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
+
+	reg_fifo reg_fifo_inst0(
+		.clk(clk),
+		.reset_n(reset_n),
+		.data_in(dual_buffer_inst_doutb),
+		.push(r_push_0),
+		.pop(pop_fifo),
+		.data_o(data_o_0),
+		.count(fifo_count_0)
+	);
+
+	reg_fifo reg_fifo_inst1(
+		.clk(clk),
+		.reset_n(reset_n),
+		.data_in(dual_buffer_inst_doutb),
+		.push(r_push_1),
+		.pop(pop_fifo),
+		.data_o(data_o_1),
+		.count(fifo_count_1)
+	);
+
+	reg_fifo reg_fifo_inst2(
+		.clk(clk),
+		.reset_n(reset_n),
+		.data_in(dual_buffer_inst_doutb),
+		.push(r_push_2),
+		.pop(pop_fifo),
+		.data_o(data_o_2),
+		.count(fifo_count_2)
+	);
+
+	// start ptoviding data with valid siginal if a row is fetched
+	wire data_is_available = (fifo_count_0 > 3) & (fifo_count_1 > 3) & (fifo_count_2 > 3);
+
+	reg [1:0] r_row_select;
 	reg [7:0] rdaddress;
-	reg [1:0] r_data_init;
+
+	reg [7:0] r_read_ptr0;
+	reg [7:0] r_read_ptr1;
+	reg [7:0] r_read_ptr2;
+
 
 	always @(posedge clk) begin : proc_r_row_select
-		if(~reset_n || r_row_select >=4) begin
+		if(~reset_n || r_row_select >=2) begin
 			r_row_select <= 0;
 		end else begin
 			r_row_select <= r_row_select +1;
 		end
 	end
 
-	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
 
+	assign fetch_data_fifo_0 = (fifo_count_0 <= 3) ? 1 : 0;
+	assign fetch_data_fifo_1 = (fifo_count_1 <= 3) ? 1 : 0;
+	assign fetch_data_fifo_2 = (fifo_count_2 <= 3) ? 1 : 0;
+
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			r_read_ptr0 <= 0;
+			r_read_ptr1 <= 0;
+			r_read_ptr2 <= 0;
+			addrb <= 0;
+		end else begin
+			case(r_row_select)
+				2'b00: if(fetch_data_fifo_0) begin r_read_ptr0 <= r_read_ptr0 + 1; addrb <= r_read_ptr0; end
+				2'b01: if(fetch_data_fifo_1) begin r_read_ptr1 <= r_read_ptr1 + 1; addrb <= r_read_ptr1; end
+				2'b10: if(fetch_data_fifo_2) begin r_read_ptr2 <= r_read_ptr2 + 1; addrb <= r_read_ptr2; end
+			endcase
+		end
+	end
+
+
+
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			r_push_0 <= 0;
+			r_push_1 <= 0;
+			r_push_2 <= 0;
+		end else begin
+			r_push_0 <= fetch_data_fifo_0;
+			r_push_1 <= fetch_data_fifo_1;
+			r_push_2 <= fetch_data_fifo_2;
+		end
+	end
+
+	assign input_layer_1_valid = data_is_available;
+	assign input_layer_1_data = {data_o_0, data_o_1, data_o_2};
+
+	
 
 
 endmodule
