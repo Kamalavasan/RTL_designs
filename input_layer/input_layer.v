@@ -225,7 +225,7 @@ module input_layer# (
 
 
 		always @(posedge clk) begin : proc_
-			if(~reset_n | in_layer_ddr3_data_rdy) begin
+			if(~reset_n) begin
 				r_next_inputlayer_id <= 0;
 			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
@@ -236,7 +236,7 @@ module input_layer# (
 		end
 
 		always @(posedge clk) begin : proc_r_next_row_id
-			if(~reset_n | in_layer_ddr3_data_rdy) begin
+			if(~reset_n) begin
 				r_next_row_id <= 0;
 			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_row_id <= r_row_position_id + 1;
