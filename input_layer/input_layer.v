@@ -247,7 +247,7 @@ module input_layer# (
 		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id - r_row_position_id <= 1);// && (r_row_position_id < input_layer_row_size -1);
 		wire fetch_rows = ( cmp_row_id | cmp_row_id? 1 : 0);
 
-		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0};
+		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address;
 
 
 	//--------------------------------------------------------------------------------------------
@@ -446,9 +446,9 @@ module input_layer# (
 	reg [7:0] r_read_ptr2;
 
 
-	assign fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_2 | r_push0_1 | r_push0_0) ? 1 : 0;
-	assign fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_2 | r_push1_1 | r_push1_0) ? 1 : 0;
-	assign fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_2 | r_push2_1 | r_push2_0) ? 1 : 0;
+	assign fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_2 | r_push0_1 | r_push0_0) && ~layer_complete ? 1 : 0;
+	assign fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_2 | r_push1_1 | r_push1_0) && ~layer_complete ? 1 : 0;
+	assign fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_2 | r_push2_1 | r_push2_0) && ~layer_complete ? 1 : 0;
 
 
 	always@(posedge clk) begin
@@ -518,11 +518,19 @@ module input_layer# (
 		end
 	end
 
-	assign input_layer_1_valid = data_is_available;
-	assign input_layer_1_data = {data_o_0, data_o_1, data_o_2};
+	reg end_valid;
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			end_valid <= 0;
+		end else if((r_row_position_id == input_layer_row_size -1) &&  (no_of_input_layers-1 ? r_inputlayer_id == no_of_input_layers -2 : 1)) begin
+			end_valid <= 1;
+		end else if(input_layer_1_rdy) begin
+			end_valid <= 0;
+		end
+	end
 
-	
-
+	assign input_layer_1_valid = data_is_available | end_valid;
+	assign input_layer_1_data = end_valid ?{8'b0,data_o_0[15:0], 8'b0,data_o_1[15:0], 8'b0, data_o_2[15:0]} : {data_o_0, data_o_1, data_o_2};
 
 endmodule
 
