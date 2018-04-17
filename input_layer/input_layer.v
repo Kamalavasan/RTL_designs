@@ -227,7 +227,7 @@ module input_layer# (
 		always @(posedge clk) begin : proc_
 			if(~reset_n) begin
 				r_next_inputlayer_id <= 0;
-			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
+			end else if((r_next_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
 			end
 			else if(row_fetch_done)begin
@@ -238,13 +238,13 @@ module input_layer# (
 		always @(posedge clk) begin : proc_r_next_row_id
 			if(~reset_n) begin
 				r_next_row_id <= 0;
-			end else if((r_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
-				r_next_row_id <= r_row_position_id + 1;
+			end else if((r_next_row_id >= no_of_input_layers -1) & row_fetch_done) begin
+				r_next_row_id <= r_next_row_id + 1;
 			end
 		end
 
-		wire cmp_input_layer_id = (r_next_inputlayer_id <= r_inputlayer_id) && (r_inputlayer_id < no_of_input_layers -1);
-		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id <= r_row_position_id) && (r_row_position_id < input_layer_row_size -1);
+		wire cmp_input_layer_id = (r_next_inputlayer_id - r_inputlayer_id <= 1) && (r_inputlayer_id < no_of_input_layers -1);
+		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id - r_row_position_id <= 1);// && (r_row_position_id < input_layer_row_size -1);
 		wire fetch_rows = ( cmp_row_id | cmp_row_id? 1 : 0);
 
 		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0};
@@ -404,7 +404,8 @@ module input_layer# (
 
 	reg_fifo reg_fifo_inst0(
 		.clk(clk),
-		.reset_n(reset_n),// | ~one_row_complete),
+		.reset_n(reset_n),
+		.one_row_complete(one_row_complete),
 		.data_in(dual_buffer_inst_doutb0),
 		.push(r_push0_2),
 		.pop(pop_fifo),
@@ -414,7 +415,8 @@ module input_layer# (
 
 	reg_fifo reg_fifo_inst1(
 		.clk(clk),
-		.reset_n(reset_n),// | ~one_row_complete),
+		.reset_n(reset_n),
+		.one_row_complete(one_row_complete),
 		.data_in(dual_buffer_inst_doutb1),
 		.push(r_push1_2),
 		.pop(pop_fifo),
@@ -424,7 +426,8 @@ module input_layer# (
 
 	reg_fifo reg_fifo_inst2(
 		.clk(clk),
-		.reset_n(reset_n),// | ~one_row_complete),
+		.reset_n(reset_n),
+		.one_row_complete(one_row_complete),
 		.data_in(dual_buffer_inst_doutb2),
 		.push(r_push2_2),
 		.pop(pop_fifo),

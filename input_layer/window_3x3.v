@@ -49,6 +49,7 @@ module reg_fifo(
 
 	input clk,
 	input reset_n,
+	input one_row_complete,
 	input [63:0] data_in,
 	input [0:0] push,
 	input [0:0] pop,
@@ -70,12 +71,14 @@ module reg_fifo(
 
     assign count =  r_count;
 
-    wire can_be_popped = (count >= 3 ? 1 : 0);
-    wire can_be_pushed = (count <= 7 ? 1 : 0);
+    wire can_be_popped = (r_count >= 3 ? 1 : 0);
+    wire can_be_pushed = (r_count <= 7 ? 1 : 0);
 
 
     always@(posedge clk) begin
     	if(~reset_n) begin
+    		r_count <= 0;
+    	end else if(one_row_complete) begin
     		r_count <= 0;
     	end else if(pop & can_be_popped & push & can_be_pushed) begin
     		r_count <=  (w_ptr_next >= r_ptr_next) ? w_ptr_next - r_ptr_next : 14- r_ptr_next + w_ptr_next;
@@ -90,6 +93,8 @@ module reg_fifo(
 	always @(posedge clk) begin : proc_fifo_rpt
 		if(~reset_n) begin
 			r_ptr <= 0;
+		end else if(one_row_complete) begin
+			r_ptr <= 0;
 		end else if(pop & can_be_popped ) begin
 			r_ptr <= r_ptr_next ;
 		end
@@ -97,6 +102,9 @@ module reg_fifo(
 
 	always @(posedge clk) begin : proc_fifo_wptr
 		if(~reset_n) begin
+			w_ptr <= 1;
+			reg_file <= 0;
+		end else if(one_row_complete) begin
 			w_ptr <= 0;
 			reg_file <= 0;
 		end else if(push & can_be_pushed) begin
