@@ -80,7 +80,7 @@ module reg_fifo(
     	end else if(pop & can_be_popped & push & can_be_pushed) begin
     		r_count <=  (w_ptr_next >= r_ptr_next) ? w_ptr_next - r_ptr_next : 14- r_ptr_next + w_ptr_next;
     	end else if(pop & can_be_popped) begin
-    		r_count <=  (w_ptr >= r_ptr_next) ? w_ptr - r_ptr_next : 14- r_ptr + w_ptr_next;
+    		r_count <=  (w_ptr >= r_ptr_next) ? w_ptr - r_ptr_next : 14- r_ptr_next + w_ptr;
     	end else if(push & can_be_pushed) begin
     		r_count <=	(w_ptr_next >= r_ptr) ? w_ptr_next - r_ptr : 14- r_ptr + w_ptr_next;
     	end

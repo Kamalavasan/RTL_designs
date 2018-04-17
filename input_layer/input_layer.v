@@ -289,9 +289,13 @@ module input_layer# (
 //		.q);
 
 
-	wire [63:0] dual_buffer_inst_doutb;
-	reg [7:0] addrb;
-	dual_buffer dual_buffer_inst
+	wire [63:0] dual_buffer_inst_doutb0;
+	wire [63:0] dual_buffer_inst_doutb1;
+	wire [63:0] dual_buffer_inst_doutb2;
+	reg [7:0] addrb0;
+	reg [7:0] addrb1;
+	reg [7:0] addrb2;
+	dual_buffer dual_buffer_inst_0
   (
 	    .clka(clk),
 	    .ena(1'b1), 
@@ -300,8 +304,34 @@ module input_layer# (
 	    .dina(M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
-	    .addrb(addrb), 
-	    .doutb(dual_buffer_inst_doutb) 
+	    .addrb(addrb0), 
+	    .doutb(dual_buffer_inst_doutb0) 
+  );
+
+  dual_buffer dual_buffer_inst_1
+  (
+	    .clka(clk),
+	    .ena(1'b1), 
+	    .wea(blk_ram_write_enable), 
+	    .addra(blk_ram_wr_addr), 
+	    .dina(M_axi_rdata),
+	    .clkb(clk),
+	    .enb(1'b1), 
+	    .addrb(addrb1), 
+	    .doutb(dual_buffer_inst_doutb1) 
+  );
+
+  dual_buffer dual_buffer_inst_2
+  (
+	    .clka(clk),
+	    .ena(1'b1), 
+	    .wea(blk_ram_write_enable), 
+	    .addra(blk_ram_wr_addr), 
+	    .dina(M_axi_rdata),
+	    .clkb(clk),
+	    .enb(1'b1), 
+	    .addrb(addrb2), 
+	    .doutb(dual_buffer_inst_doutb2) 
   );
 	//--------------------------------------------------------------------------------------------
 	//----------- logic for reading and providing required data-----------------------------------
@@ -374,8 +404,8 @@ module input_layer# (
 
 	reg_fifo reg_fifo_inst0(
 		.clk(clk),
-		.reset_n(reset_n),
-		.data_in(dual_buffer_inst_doutb),
+		.reset_n(reset_n),// | ~one_row_complete),
+		.data_in(dual_buffer_inst_doutb0),
 		.push(r_push0_2),
 		.pop(pop_fifo),
 		.data_o(data_o_0),
@@ -384,8 +414,8 @@ module input_layer# (
 
 	reg_fifo reg_fifo_inst1(
 		.clk(clk),
-		.reset_n(reset_n),
-		.data_in(dual_buffer_inst_doutb),
+		.reset_n(reset_n),// | ~one_row_complete),
+		.data_in(dual_buffer_inst_doutb1),
 		.push(r_push1_2),
 		.pop(pop_fifo),
 		.data_o(data_o_1),
@@ -394,8 +424,8 @@ module input_layer# (
 
 	reg_fifo reg_fifo_inst2(
 		.clk(clk),
-		.reset_n(reset_n),
-		.data_in(dual_buffer_inst_doutb),
+		.reset_n(reset_n),// | ~one_row_complete),
+		.data_in(dual_buffer_inst_doutb2),
 		.push(r_push2_2),
 		.pop(pop_fifo),
 		.data_o(data_o_2),
@@ -413,18 +443,40 @@ module input_layer# (
 	reg [7:0] r_read_ptr2;
 
 
-	always @(posedge clk) begin : proc_r_row_select
-		if(~reset_n || r_row_select >=2) begin
-			r_row_select <= 0;
-		end else begin
-			r_row_select <= r_row_select +1;
+	assign fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_2 | r_push0_1 | r_push0_0) ? 1 : 0;
+	assign fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_2 | r_push1_1 | r_push1_0) ? 1 : 0;
+	assign fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_2 | r_push2_1 | r_push2_0) ? 1 : 0;
+
+
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			addrb0 <= 0;
+		end else if(one_row_complete) begin
+			addrb0 <= 0 + {~r_blk_read_offset_select, 5'b0};
+		end else if(fetch_data_fifo_0) begin
+			addrb0 <= addrb0 + 1;
 		end
 	end
 
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			addrb1 <= 0;
+		end else if(one_row_complete) begin
+			addrb1 <= 0 + {~r_blk_read_offset_select, 5'b0};
+		end else if(fetch_data_fifo_1) begin
+			addrb1 <= addrb1 + 1;
+		end
+	end
 
-	assign fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram ? 1 : 0;
-	assign fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram ? 1 : 0;
-	assign fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram ? 1 : 0;
+	always@(posedge clk) begin
+		if(~reset_n) begin
+			addrb2 <= 0;
+		end else if(one_row_complete) begin
+			addrb2 <= 0 + {~r_blk_read_offset_select, 5'b0};
+		end else if(fetch_data_fifo_2) begin
+			addrb2 <= addrb2 + 1;
+		end
+	end
 
 
 	reg r_blk_read_offset_select;
@@ -438,23 +490,6 @@ module input_layer# (
 	end
 
 	wire[7:0]  next_blk_ram_read_offset = (r_blk_read_offset_select ? 8'd32 : 8'd0);
-	always@(posedge clk) begin
-		if(~reset_n) begin
-			r_read_ptr0 <= 0;
-			r_read_ptr1 <= 0;
-			r_read_ptr2 <= 0;
-			addrb <= 0;
-		end else begin
-			case(r_row_select)
-				2'b00: if(fetch_data_fifo_0) begin r_read_ptr0 <= r_read_ptr0 + 1; addrb <= r_read_ptr0 + next_blk_ram_read_offset + 0; end
-				2'b01: if(fetch_data_fifo_1) begin r_read_ptr1 <= r_read_ptr1 + 1; addrb <= r_read_ptr1 + next_blk_ram_read_offset + 8; end
-				2'b10: if(fetch_data_fifo_2) begin r_read_ptr2 <= r_read_ptr2 + 1; addrb <= r_read_ptr2 + next_blk_ram_read_offset + 16; end
-				default : begin r_read_ptr0 <= 0; r_read_ptr1 <= 0; r_read_ptr2 <= 0; addrb <= 0; end
-			endcase
-		end
-	end
-
-
 
 	always@(posedge clk) begin
 		if(~reset_n) begin
@@ -468,9 +503,9 @@ module input_layer# (
 			r_push1_2 <= 0;
 			r_push2_2 <= 0;
 		end else begin
-			r_push0_0 <= fetch_data_fifo_0 && (r_row_select == 2'b00);
-			r_push1_0 <= fetch_data_fifo_1 && (r_row_select == 2'b01);
-			r_push2_0 <= fetch_data_fifo_2 && (r_row_select == 2'b10);
+			r_push0_0 <= fetch_data_fifo_0;
+			r_push1_0 <= fetch_data_fifo_1;
+			r_push2_0 <= fetch_data_fifo_2;
 			r_push0_1 <= r_push0_0;
 			r_push1_1 <= r_push1_0;
 			r_push2_1 <= r_push2_0;
