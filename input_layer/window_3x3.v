@@ -63,14 +63,29 @@ module reg_fifo(
 
 	reg[3:0] r_ptr;
 	reg[3:0] w_ptr;
+	reg[3:0] r_count;
 
 	wire [3:0] w_ptr_next = (w_ptr +8 >= 15) ?  w_ptr - 7 : w_ptr +8;
 	wire [3:0] r_ptr_next = (r_ptr +1 >= 15) ?  r_ptr -14 : r_ptr +1;
 
-    assign count =  (w_ptr >= r_ptr) ? w_ptr - r_ptr : 14- r_ptr + w_ptr;
+    assign count =  r_count;
 
     wire can_be_popped = (count >= 3 ? 1 : 0);
     wire can_be_pushed = (count <= 7 ? 1 : 0);
+
+
+    always@(posedge clk) begin
+    	if(~reset_n) begin
+    		r_count <= 0;
+    	end else if(pop & can_be_popped & push & can_be_pushed) begin
+    		r_count <=  (w_ptr_next >= r_ptr_next) ? w_ptr_next - r_ptr_next : 14- r_ptr_next + w_ptr_next;
+    	end else if(pop & can_be_popped) begin
+    		r_count <=  (w_ptr >= r_ptr_next) ? w_ptr - r_ptr_next : 14- r_ptr + w_ptr_next;
+    	end else if(push & can_be_pushed) begin
+    		r_count <=	(w_ptr_next >= r_ptr) ? w_ptr_next - r_ptr : 14- r_ptr + w_ptr_next;
+    	end
+    end
+
 
 	always @(posedge clk) begin : proc_fifo_rpt
 		if(~reset_n) begin
