@@ -28,6 +28,12 @@
 	(
 		// Users to add ports here
 
+		output wire Start,
+		output wire max_pool_en,
+		output wire expand_en,
+		output wire [15:0] No_of_input_layers,
+		output wire [15:0] No_of_rows,
+		output wire [15:0] No_of_cols,
 		// User ports ends
 		// Do not modify the ports beyond this line
 
@@ -63,7 +69,7 @@
     // on a slave to be used for multiple logical interfaces.
 		input wire [3 : 0] S_AXI_AWREGION,
 		// Optional User-defined signal in the write address channel.
-		input wire [C_S_AXI_AWUSER_WIDTH-1 : 0] S_AXI_AWUSER,
+	//	input wire [C_S_AXI_AWUSER_WIDTH-1 : 0] S_AXI_AWUSER,
 		// Write address valid. This signal indicates that
     // the channel is signaling valid write address and
     // control information.
@@ -82,7 +88,7 @@
     // in a write burst.
 		input wire  S_AXI_WLAST,
 		// Optional User-defined signal in the write data channel.
-		input wire [C_S_AXI_WUSER_WIDTH-1 : 0] S_AXI_WUSER,
+	//	input wire [C_S_AXI_WUSER_WIDTH-1 : 0] S_AXI_WUSER,
 		// Write valid. This signal indicates that valid write
     // data and strobes are available.
 		input wire  S_AXI_WVALID,
@@ -96,7 +102,7 @@
     // of the write transaction.
 		output wire [1 : 0] S_AXI_BRESP,
 		// Optional User-defined signal in the write response channel.
-		output wire [C_S_AXI_BUSER_WIDTH-1 : 0] S_AXI_BUSER,
+	//	output wire [C_S_AXI_BUSER_WIDTH-1 : 0] S_AXI_BUSER,
 		// Write response valid. This signal indicates that the
     // channel is signaling a valid write response.
 		output wire  S_AXI_BVALID,
@@ -133,7 +139,7 @@
     // on a slave to be used for multiple logical interfaces.
 		input wire [3 : 0] S_AXI_ARREGION,
 		// Optional User-defined signal in the read address channel.
-		input wire [C_S_AXI_ARUSER_WIDTH-1 : 0] S_AXI_ARUSER,
+	//	input wire [C_S_AXI_ARUSER_WIDTH-1 : 0] S_AXI_ARUSER,
 		// Write address valid. This signal indicates that
     // the channel is signaling valid read address and
     // control information.
@@ -154,7 +160,7 @@
     // in a read burst.
 		output wire  S_AXI_RLAST,
 		// Optional User-defined signal in the read address channel.
-		output wire [C_S_AXI_RUSER_WIDTH-1 : 0] S_AXI_RUSER,
+	//	output wire [C_S_AXI_RUSER_WIDTH-1 : 0] S_AXI_RUSER,
 		// Read valid. This signal indicates that the channel
     // is signaling the required read data.
 		output wire  S_AXI_RVALID,
@@ -608,6 +614,79 @@
 	end    
 
 	// Add user logic here
+
+	//------------------------------------------------------------------------------------
+	//-------------------- Logic for getting parameters-----------------------------------
+	//------------------------------------------------------------------------------------
+
+	// following parameter will be fetched from address
+	// 	  ADDR                   PARAMETER
+	// 0x00000000 ------- 		 (byte0[0] == Start processing), (byte0[1] = max_pool_en), ((byte0[2] = expand_en), (byte1 = layer_ID) , (byte2, byte3 = No_of_input_layers)
+	// 0x00000004 -------        (byte1, byte0 = No_of_rows), (byte3, byte2 = no_of_cols)
+	// 0x00000008 -------        start of axi address
+	// 0x0000000c -------        other parameters
+	// 0x00000010 -------        other parameters
+
+
+		reg r_Start;
+		reg [7:0] r_layer_ID;
+		reg r_max_pool_en;
+		reg r_expand_en;
+		reg [15:0] r_No_of_input_layers;
+		reg [15:0] r_No_of_rows;
+		reg [15:0] r_no_of_cols;
+		reg [31:0] r_axi_address;
+
+
+		// start signal
+		always @(posedge S_AXI_ACLK) begin : proc_addr0
+			if(~S_AXI_ARESETN) begin
+				r_Start <= 0;
+				r_layer_ID <= 0;
+				r_max_pool_en <= 0;
+				r_expand_en <= 0;
+				r_No_of_input_layers <= 0;
+			end else if(mem_wren && mem_address == 0)begin
+				r_Start <= S_AXI_WDATA[0:0];
+				r_layer_ID <= S_AXI_WDATA[15:8];
+				r_max_pool_en <= S_AXI_WDATA[1:1];
+				r_expand_en <= S_AXI_WDATA[2:2];
+				r_No_of_input_layers <= S_AXI_WDATA[31:16];
+			end else begin
+				r_Start <= 0;
+				r_max_pool_en <= 0;
+				r_expand_en <= 0;
+			end
+		end
+
+		always @(posedge S_AXI_ACLK) begin : proc_addr1
+			if(~S_AXI_ARESETN) begin
+				r_No_of_rows <= 0;
+				r_no_of_cols <= 0;
+			end else if(mem_wren && mem_address == 1) begin
+				r_No_of_rows <= S_AXI_WDATA[15:0];
+				r_no_of_cols <= S_AXI_WDATA[31:16];
+			end
+		end
+
+		always @(posedge S_AXI_ACLK) begin : proc_addr1
+			if(~S_AXI_ARESETN) begin
+				r_axi_address <= 0;
+			end else if(mem_wren && mem_address == 2) begin
+				r_axi_address <= S_AXI_WDATA;
+			end
+		end
+
+
+		assign Start = r_Start;
+		assign max_pool_en = r_max_pool_en;
+		assign expand_en = r_expand_en;
+		assign layer_ID = r_layer_ID;
+		assign No_of_input_layers = r_No_of_input_layers;
+		assign No_of_rows = r_No_of_rows;
+		assign no_of_cols = r_no_of_cols;
+
+
 
 	// User logic ends
 
