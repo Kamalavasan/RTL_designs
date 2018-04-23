@@ -130,12 +130,24 @@ module kernel_loader #(
 
     reg [1:0] r_fifo_select;
 
+    // kernel address trackers
     reg [31:0] r_kernel_0_addr;
     reg [31:0] r_kernel_1_addr;
     reg [31:0] r_kernel_2_addr;
+
+
+	// address tracker
+	// tracks address within a burst
+    reg [31:0] r_addr_tracker;
+
+    // registering input fifo data and write
+    // enable
+    reg [63:0] r_fifo_wdata;
+    reg r_fifo_0_wr_en;
+    reg r_fifo_1_wr_en;
+    reg r_fifo_2_wr_en;
+
     reg [31:0] r_read_axi_addr;
-
-
     assign read_burst_done = M_axi_rready & M_axi_rvalid & M_axi_rlast;
     always @(posedge clk) begin : proc_r_fifo_select
     	if(~reset_n | Start) begin
@@ -153,12 +165,13 @@ module kernel_loader #(
 
     // kernel 0 address logic
     // it will wrap if it is enabled
+    assign addres_set_done = M_axi_arvalid & M_axi_arready;
     always @(posedge clk) begin : proc_r_kernel_0_addr
     	if(~reset_n) begin
     		r_kernel_0_addr <= 0;
     	end else if(Start || (kernel_0_wrap_en && (kernel_0_end_addr <= kernel_0_start_addr))) begin
     		r_kernel_0_addr <= kernel_0_start_addr;
-    	end else if(r_fifo_select == 2'b00 && read_burst_done) begin
+    	end else if(r_fifo_select == 2'b00 && addres_set_done ) begin
     		r_kernel_0_addr <= r_kernel_0_addr + C_S_AXI_BURST_LEN * 4;
     	end
     end
@@ -170,7 +183,7 @@ module kernel_loader #(
     		r_kernel_1_addr <= 0;
     	end else if(Start || (kernel_1_wrap_en && (kernel_1_end_addr <= kernel_1_start_addr))) begin
     		r_kernel_1_addr <= kernel_1_start_addr;
-    	end else if(r_fifo_select == 2'b01 && read_burst_done) begin
+    	end else if(r_fifo_select == 2'b01 && addres_set_done) begin
     		r_kernel_1_addr <= r_kernel_1_addr + C_S_AXI_BURST_LEN * 4;
     	end
     end
@@ -182,7 +195,7 @@ module kernel_loader #(
     		r_kernel_2_addr <= 0;
     	end else if(Start || (kernel_2_wrap_en && (kernel_2_end_addr <= kernel_2_start_addr))) begin
     		r_kernel_2_addr <= kernel_2_start_addr;
-    	end else if(r_fifo_select == 2'b10 && read_burst_done) begin
+    	end else if(r_fifo_select == 2'b10 && addres_set_done) begin
     		r_kernel_2_addr <= r_kernel_2_addr + C_S_AXI_BURST_LEN * 4;
     	end
     end
@@ -190,7 +203,7 @@ module kernel_loader #(
 
     // assigning address 
     always @(posedge clk) begin : proc_r_read_axi_addr
-    	if(~reset_n) begin
+    	if(~reset_n | Start) begin
     		r_read_axi_addr <= 0;
     	end else begin
     		case(r_fifo_select)
@@ -202,6 +215,58 @@ module kernel_loader #(
     	end
     end
 
+    always @(posedge clk) begin : proc_
+    	if(~reset_n | Start) begin
+    		r_addr_tracker <= 0;
+    	end else if(addres_set_done) begin
+    		r_addr_tracker <= M_axi_araddr;
+    	end else if(M_axi_rvalid & M_axi_rready) begin
+    		r_addr_tracker <= r_addr_tracker + 1;
+    	end
+    end
+
+
+    always @(posedge clk) begin : proc_
+    	if(~reset_n | Start) begin
+    		r_fifo_wdata <= 0;
+    	end else begin
+    		r_fifo_wdata <= M_axi_wdata;
+    	end
+    end
+
+    assign valid_rd_data = M_axi_rvalid & M_axi_rready;
+    always @(posedge clk) begin : proc_
+    	if(~reset_n | Start) begin
+    		r_fifo_0_wr_en <= 0;
+    	end else if(r_fifo_select == 2'b00) begin
+    		r_fifo_0_wr_en <= valid_rd_data;
+    	end else begin
+    		r_fifo_0_wr_en <= 0;
+    	end
+    end
+
+    always @(posedge clk) begin : proc_
+    	if(~reset_n | Start) begin
+    		r_fifo_1_wr_en <= 0;
+    	end else if(r_fifo_select == 2'b01) begin
+    		r_fifo_1_wr_en <= valid_rd_data;
+    	end else begin
+    		r_fifo_1_wr_en <= 0;
+    	end
+    end
+
+    always @(posedge clk) begin : proc_
+    	if(~reset_n | Start) begin
+    		r_fifo_2_wr_en <= 0;
+    	end else if(r_fifo_select == 2'b10) begin
+    		r_fifo_2_wr_en <= valid_rd_data;
+    	end else begin
+    		r_fifo_2_wr_en <= 0;
+    	end
+    end
+
+
+
  	//********************************************************************************
 	//********** AXI Read **********************************************************
 	//********************************************************************************
@@ -210,7 +275,7 @@ module kernel_loader #(
 	reg[3:0] axi_read_FSM;
 
 	always@(posedge clk) begin
-		if(~reset_n || state_ == 0) begin
+		if(~reset_n) begin
 			axi_read_FSM <= 0;
 		end else begin
 			case(axi_read_FSM) 
