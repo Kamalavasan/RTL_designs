@@ -27,13 +27,47 @@
 	)
 	(
 		// Users to add ports here
-
+		// general layer parameters and start signal
 		output wire Start,
+
 		output wire max_pool_en,
+
 		output wire expand_en,
+
 		output wire [15:0] No_of_input_layers,
+
 		output wire [15:0] No_of_rows,
+
 		output wire [15:0] No_of_cols,
+
+		// processing module specific parameters
+		output  wire 			[15:0] 									No_of_expand_layers,
+		output  wire 			[15:0] 									No_of_squeeze_layers,
+
+		// input layer specific parameter
+		output  wire 			[31:0]									input_layer_axi_start_addr,
+
+		// parameters for kernel loader
+
+		output  wire 			[31:0]									kernel_0_start_addr,
+		output  wire 			[31:0]									kernel_0_end_addr,
+		output															kernel_0_wrap_en,
+
+		output  wire 			[31:0]									kernel_1_start_addr,
+		output  wire 			[31:0]									kernel_1_end_addr,
+		output															kernel_1_wrap_en,
+
+		output  wire 			[31:0]									kernel_2_start_addr,
+		output  wire 			[31:0]									kernel_2_end_addr,
+		output															kernel_2_wrap_en,
+
+		// parameters for output layer
+
+		output  wire 			[15:0] 									No_of_output_layers,
+		output  wire 			[15:0] 									No_of_output_rows,
+		output  wire 			[15:0] 									No_of_output_cols,
+		output  wire 			[31:0] 									output_layer_axi_address,
+
 		// User ports ends
 		// Do not modify the ports beyond this line
 
@@ -621,22 +655,69 @@
 
 	// following parameter will be fetched from address
 	// 	  ADDR                   PARAMETER
+
+			// common paprameters and input layer
 	// 0x00000000 ------- 		 (byte0[0] == Start processing), (byte0[1] = max_pool_en), ((byte0[2] = expand_en), (byte1 = layer_ID) , (byte2, byte3 = No_of_input_layers)
 	// 0x00000004 -------        (byte1, byte0 = No_of_rows), (byte3, byte2 = no_of_cols)
-	// 0x00000008 -------        start of axi address
-	// 0x0000000c -------        other parameters
-	// 0x00000010 -------        other parameters
+	// 0x00000008 -------        (byte0, byte1 == No_of_expand_layers), (byte2, byte3 = No_of_squeeze_layers)
+	// 0x0000000c -------        start of input layer axi address
+	 
+
+			//kernel loader parameter
+	// 0x00000020 -------        kernel0 settings
+	// 0x00000024 -------        kernel0 - AXI address start
+	// 0x00000028 -------        kernel0 - AXI end address 
+
+	// 0x00000030 -------        kernel1 settings 
+	// 0x00000034 -------        kernel1 - AXI address start
+	// 0x00000038 -------        kernel1 - AXI end address
+
+	// 0x00000040 -------        kernel2 settings 
+	// 0x00000044 -------        kernel2 - AXI address start
+	// 0x00000048 -------        kernel2 - AXI end address
 
 
+			// output layer parameters
+	// 0x00000080 -------        (byte0, byte1 = No of output layers ) 
+	// 0x00000084 -------        (byte0, byte1 = No_of_rows, byte2, byte3 = no_of_cols)
+	// 0x00000088 -------        start of output layer axi address
+
+
+
+
+	// Common parameters
 		reg r_Start;
 		reg [7:0] r_layer_ID;
 		reg r_max_pool_en;
 		reg r_expand_en;
 		reg [15:0] r_No_of_input_layers;
-		reg [15:0] r_No_of_rows;
-		reg [15:0] r_no_of_cols;
-		reg [31:0] r_axi_address;
+		reg [15:0] r_No_of_input_layer_rows;
+		reg [15:0] r_no_of_input_layer_cols;
 
+
+		reg [15:0] r_No_of_expand_layers;
+		reg [15:0] r_No_of_squeeze_layers;
+
+		reg [31:0] r_input_layer_axi_address;
+
+	// parameters for kerel loader
+		reg [31:0] r_kernel0_settings;
+		reg [31:0] r_kernel0_axi_start_addr;
+		reg [31:0] r_kernel0_axi_end_addr;
+
+		reg [31:0] r_kernel1_settings;
+		reg [31:0] r_kernel1_axi_start_addr;
+		reg [31:0] r_kernel1_axi_end_addr;
+
+		reg [31:0] r_kernel2_settings;
+		reg [31:0] r_kernel2_axi_start_addr;
+		reg [31:0] r_kernel2_axi_end_addr;
+
+	// parameters for output layers
+		reg [15:0] r_No_of_output_layers;
+		reg [15:0] r_No_of_output_rows;
+		reg [15:0] r_No_of_output_cols;
+		reg [31:0] r_output_layer_axi_address;
 
 		// start signal
 		always @(posedge S_AXI_ACLK) begin : proc_addr0
@@ -661,30 +742,144 @@
 
 		always @(posedge S_AXI_ACLK) begin : proc_addr1
 			if(~S_AXI_ARESETN) begin
-				r_No_of_rows <= 0;
-				r_no_of_cols <= 0;
+				r_No_of_input_layer_rows <= 0;
+				r_no_of_input_layer_cols <= 0;
 			end else if(mem_wren && mem_address == 1) begin
-				r_No_of_rows <= S_AXI_WDATA[15:0];
-				r_no_of_cols <= S_AXI_WDATA[31:16];
+				r_No_of_input_layer_rows <= S_AXI_WDATA[15:0];
+				r_no_of_input_layer_cols <= S_AXI_WDATA[31:16];
 			end
 		end
 
 		always @(posedge S_AXI_ACLK) begin : proc_addr1
 			if(~S_AXI_ARESETN) begin
-				r_axi_address <= 0;
+				r_No_of_expand_layers <= 0;
+				r_No_of_squeeze_layers <= 0;
 			end else if(mem_wren && mem_address == 2) begin
-				r_axi_address <= S_AXI_WDATA;
+				r_No_of_expand_layers <= S_AXI_WDATA[15:0];
+				r_No_of_squeeze_layers <= S_AXI_WDATA[31:16];
+			end
+		end
+
+		always @(posedge S_AXI_ACLK) begin : proc_addr1
+			if(~S_AXI_ARESETN) begin
+				r_input_layer_axi_address <= 0;
+			end else if(mem_wren && mem_address == 3) begin
+				r_input_layer_axi_address <= S_AXI_WDATA;
 			end
 		end
 
 
+
+		// Kernel loader parameters
+		// kerel 0
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel0_settings
+			if(~S_AXI_ARESETN) begin
+				r_kernel0_settings <= 0;
+			end else if(mem_wren && mem_address == 8) begin
+				r_kernel0_settings <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel0_axi_start_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel0_axi_start_addr <= 0;
+			end else if(mem_wren && mem_address == 9) begin
+				r_kernel0_axi_start_addr <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel0_axi_end_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel0_axi_end_addr <= 0;
+			end else if(mem_wren && mem_address == 10) begin
+				r_kernel0_axi_end_addr <= S_AXI_WDATA;
+			end
+		end
+		//-------------------------------------------------------------
+
+		// kernel 1
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel1_settings
+			if(~S_AXI_ARESETN) begin
+				r_kernel1_settings <= 0;
+			end else if(mem_wren && mem_address == 12) begin
+				r_kernel1_settings <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel1_axi_start_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel1_axi_start_addr <= 0;
+			end else if(mem_wren && mem_address == 13) begin
+				r_kernel1_axi_start_addr <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel1_axi_end_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel1_axi_end_addr <= 0;
+			end else if(mem_wren && mem_address == 14) begin
+				r_kernel1_axi_end_addr <= S_AXI_WDATA;
+			end
+		end
+		//--------------------------------------------------------------
+
+		// kernel 2
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel2_settings
+			if(~S_AXI_ARESETN) begin
+				r_kernel2_settings <= 0;
+			end else if(mem_wren && mem_address == 16) begin
+				r_kernel2_settings <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel2_axi_start_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel2_axi_start_addr <= 0;
+			end else if(mem_wren && mem_address == 17) begin
+				r_kernel2_axi_start_addr <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel2_axi_end_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel2_axi_end_addr <= 0;
+			end else if(mem_wren && mem_address == 18) begin
+				r_kernel2_axi_end_addr <= S_AXI_WDATA;
+			end
+		end
+		//-------------------------------------------------------------
+
+		// output layer parameters
+		always @(posedge S_AXI_ACLK) begin : proc_r_No_of_output_layers
+			if(~S_AXI_ARESETN) begin
+				r_No_of_output_layers <= 0;
+			end else if(mem_wren && mem_address == 32) begin
+				r_No_of_output_layers <= S_AXI_WDATA[15:0];
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_No_of_output_rows
+			if(~S_AXI_ARESETN) begin
+				r_No_of_output_rows <= 0;
+				r_No_of_output_cols <= 0;
+			end else if(mem_wren && mem_address == 33) begin
+				r_No_of_output_rows <= S_AXI_WDATA[15:0];
+				r_No_of_output_cols <= S_AXI_WDATA[31:16];
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_output_layer_axi_address
+			if(~S_AXI_ARESETN) begin
+				r_output_layer_axi_address <= 0;
+			end else if(mem_wren && mem_address == 34) begin
+				r_output_layer_axi_address <= S_AXI_WDATA;
+			end
+		end
+		
+
+
+
+		// IO interface
+		// 
 		assign Start = r_Start;
 		assign max_pool_en = r_max_pool_en;
 		assign expand_en = r_expand_en;
 		assign layer_ID = r_layer_ID;
 		assign No_of_input_layers = r_No_of_input_layers;
-		assign No_of_rows = r_No_of_rows;
-		assign no_of_cols = r_no_of_cols;
+		assign No_of_rows = r_No_of_input_layer_rows;
+		assign no_of_cols = r_no_of_input_layer_cols;
 
 
 
