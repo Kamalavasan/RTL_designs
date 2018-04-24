@@ -49,6 +49,8 @@
 
 		// parameters for kernel loader
 
+		output 					[2:0]									skip_en,
+
 		output  wire 			[31:0]									kernel_0_start_addr,
 		output  wire 			[31:0]									kernel_0_end_addr,
 		output															kernel_0_wrap_en,
@@ -67,6 +69,12 @@
 		output  wire 			[15:0] 									No_of_output_rows,
 		output  wire 			[15:0] 									No_of_output_cols,
 		output  wire 			[31:0] 									output_layer_axi_address,
+
+
+		// Debug interface
+		input   wire            [31:0] 									stream_in,
+		input   wire                                                    stream_in_rd_en,
+		input 	wire            [7:0]    								stream_in_count,
 
 		// User ports ends
 		// Do not modify the ports beyond this line
@@ -872,7 +880,7 @@
 
 
 		// IO interface
-		// 
+		// common parameters
 		assign Start = r_Start;
 		assign max_pool_en = r_max_pool_en;
 		assign expand_en = r_expand_en;
@@ -881,7 +889,53 @@
 		assign No_of_rows = r_No_of_input_layer_rows;
 		assign no_of_cols = r_no_of_input_layer_cols;
 
+		// specific parameter - input layer
+		assign input_layer_axi_start_addr = r_input_layer_axi_address;
 
+		// specific parameter - processing block
+		assign No_of_expand_layers = r_No_of_expand_layers;
+		assign No_of_squeeze_layers = r_No_of_squeeze_layers;
+
+		// specific parameter - kernel loader
+		assign skip_en = {r_kernel2_settings[1], r_kernel1_settings[1], r_kernel0_settings[1]};
+
+		assign kernel_0_start_addr = r_kernel0_axi_start_addr ;
+		assign kernel_0_end_addr =  r_kernel0_axi_end_addr;
+		assign kernel_0_wrap_en =  r_kernel0_settings[0];
+
+		assign kernel_1_start_addr =  r_kernel1_axi_start_addr;
+		assign kernel_1_end_addr =  r_kernel1_axi_end_addr;
+		assign kernel_1_wrap_en =  r_kernel1_settings[0];
+
+		assign kernel_2_start_addr =  r_kernel2_axi_start_addr;
+		assign kernel_2_end_addr =  r_kernel2_axi_end_addr;
+		assign kernel_2_wrap_en =  r_kernel2_settings[0];
+
+		// specific parameter - output layer
+		assign No_of_output_layers = r_No_of_output_layers;
+		assign No_of_output_rows = r_No_of_output_rows;
+		assign No_of_output_cols = r_No_of_output_cols;
+		assign output_layer_axi_address = r_output_layer_axi_address;
+
+
+
+		// debug interface specifc parameter
+		// AXI read interface will be used to
+		// read from a streaming interface
+
+
+		reg [31:0] r_debug_read_data;
+		always @(posedge S_AXI_ACLK) begin : proc_
+			if(~S_AXI_ARESETN) begin
+				r_debug_read_data <= 0;
+			end else if(mem_address == 0)begin
+				r_debug_read_data <= stream_in_count;
+			end else if(mem_address == 1) begin
+				r_debug_read_data <= stream_in;
+			end
+		end
+
+		assign stream_in_rd_en = axi_rvalid && S_AXI_RREADY;
 
 	// User logic ends
 
