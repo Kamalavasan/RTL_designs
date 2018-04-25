@@ -296,7 +296,6 @@ module input_layer# (
 	reg [7:0] addrb0;
 	reg [7:0] addrb1;
 	reg [7:0] addrb2;
-	
 	dual_buffer dual_buffer_inst_0
   (
 	    .clka(clk),
@@ -356,7 +355,7 @@ module input_layer# (
 
 	reg r_M_axi_rready;
 	always @(posedge clk) begin
-		if( ~reset_n | (M_axi_rready & M_axi_rvalid & M_axi_rlast) | Start)
+		if( ~reset_n | (M_axi_rready & M_axi_rvalid & M_axi_rlast_) | Start)
        		r_M_axi_rready <= 0;
        	else if(M_axi_rvalid)begin
        		r_M_axi_rready <= 1;
