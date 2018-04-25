@@ -22,6 +22,7 @@ module input_layer# (
              
     ) (
 	// parameters from axi_lite
+	input Start,
 	input [C_S_AXI_ADDR_WIDTH -1 : 0] axi_address,
 	input [9:0] no_of_input_layers,
 	input [9:0] input_layer_row_size,
@@ -161,7 +162,7 @@ module input_layer# (
 	// provide 3x3 window on each clockcycle moving 
 	// along a row
 	always @(posedge clk) begin : proc_r_col_postion_id
-		if(~reset_n | layer_complete) begin
+		if(~reset_n | Start |layer_complete) begin
 			r_col_postion_id <= 0;
 		end else if(valid_transation)begin
 			 if(r_col_postion_id >= input_layer_col_size - 1) begin
@@ -175,7 +176,7 @@ module input_layer# (
 	// if a row completed move to same row 
 	// of next layer
 	always @(posedge clk) begin : proc_r_inputlayer_id
-		if(~reset_n | layer_complete) begin
+		if(~reset_n | Start | layer_complete) begin
 			r_inputlayer_id <= 0;
 		end else if(one_row_complete)begin
 			 if(move_to_next_rows) begin
@@ -189,7 +190,7 @@ module input_layer# (
 	// after completeing all same row id in
 	// all layers move to next row
 	always @(posedge clk) begin : proc_r_row_position_id
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			r_row_position_id <= 0;
 		end else if(move_to_next_rows & (r_row_position_id < input_layer_row_size))begin
 			r_row_position_id <= r_row_position_id + 1;
@@ -225,7 +226,7 @@ module input_layer# (
 
 
 		always @(posedge clk) begin : proc_
-			if(~reset_n) begin
+			if(~reset_n | Start) begin
 				r_next_inputlayer_id <= 0;
 			end else if((r_next_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
@@ -236,7 +237,7 @@ module input_layer# (
 		end
 
 		always @(posedge clk) begin : proc_r_next_row_id
-			if(~reset_n) begin
+			if(~reset_n | Start) begin
 				r_next_row_id <= 0;
 			end else if((r_next_row_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_row_id <= r_next_row_id + 1;
@@ -258,7 +259,7 @@ module input_layer# (
 	reg r_blk_write_offset_select;
 
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			r_blk_write_offset_select <= 0;
 		end
 		else if(row_fetch_done) begin
@@ -273,7 +274,7 @@ module input_layer# (
 
 	reg [7:0] blk_ram_wr_addr;
 	always @(posedge clk) begin : proc_blk_ram_wr_addr
-		if(~reset_n | (M_axi_arvalid & M_axi_arready)) begin
+		if(~reset_n | (M_axi_arvalid & M_axi_arready) | Start) begin
 			blk_ram_wr_addr <= next_blk_ram_write_offset;
 		end else if(blk_ram_write_enable) begin
 			blk_ram_wr_addr <= blk_ram_wr_addr + 1;
@@ -341,7 +342,7 @@ module input_layer# (
 	reg[3:0] axi_read_FSM;
 
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			axi_read_FSM <= 0;
 		end else begin
 			case(axi_read_FSM) 
@@ -354,7 +355,7 @@ module input_layer# (
 
 	reg r_M_axi_rready;
 	always @(posedge clk) begin
-		if( ~reset_n || M_axi_rready & M_axi_rvalid & M_axi_rlast)
+		if( ~reset_n | (M_axi_rready & M_axi_rvalid & M_axi_rlast_) | Start)
        		r_M_axi_rready <= 0;
        	else if(M_axi_rvalid)begin
        		r_M_axi_rready <= 1;
@@ -364,7 +365,7 @@ module input_layer# (
 
     reg r_M_axi_arvalid;
     always @(posedge clk) begin
-        if(~reset_n || (M_axi_arvalid && M_axi_arready)) begin
+        if(~reset_n | (M_axi_arvalid && M_axi_arready) | Start) begin
             r_M_axi_arvalid <= 0;
         end else if(axi_read_FSM == 4'b0001 & ~r_M_axi_arvalid) begin
             r_M_axi_arvalid <= 1;
@@ -452,7 +453,7 @@ module input_layer# (
 
 
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			addrb0 <= 0;
 		end else if(one_row_complete) begin
 			addrb0 <= 0 + {~r_blk_read_offset_select, 5'b0};
@@ -462,7 +463,7 @@ module input_layer# (
 	end
 
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			addrb1 <= 0;
 		end else if(one_row_complete) begin
 			addrb1 <= 0 + {~r_blk_read_offset_select, 5'b0};
@@ -472,7 +473,7 @@ module input_layer# (
 	end
 
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			addrb2 <= 0;
 		end else if(one_row_complete) begin
 			addrb2 <= 0 + {~r_blk_read_offset_select, 5'b0};
@@ -485,7 +486,7 @@ module input_layer# (
 	reg r_blk_read_offset_select;
 
 	always @(posedge clk) begin : proc_r_blk_read_offset_select
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			r_blk_read_offset_select <= 0;
 		end else if(one_row_complete)begin
 			r_blk_read_offset_select <= ~r_blk_read_offset_select;
@@ -495,7 +496,7 @@ module input_layer# (
 	wire[7:0]  next_blk_ram_read_offset = (r_blk_read_offset_select ? 8'd32 : 8'd0);
 
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			r_push0_0 <= 0;
 			r_push1_0 <= 0;
 			r_push2_0 <= 0;
@@ -520,7 +521,7 @@ module input_layer# (
 
 	reg end_valid;
 	always@(posedge clk) begin
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			end_valid <= 0;
 		end else if((r_row_position_id == input_layer_row_size -1) &&  (no_of_input_layers-1 ? r_inputlayer_id == no_of_input_layers -2 : 1)) begin
 			end_valid <= 1;
