@@ -105,7 +105,7 @@ module reg_fifo(
 			w_ptr <= 1;
 			reg_file <= 0;
 		end else if(one_row_complete) begin
-			w_ptr <= 0;
+			w_ptr <= 1;
 			reg_file <= 0;
 		end else if(push & can_be_pushed) begin
 			w_ptr <= w_ptr_next; 

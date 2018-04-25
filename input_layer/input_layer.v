@@ -547,7 +547,7 @@ module input_layer# (
 	wire[7:0]  next_blk_ram_read_offset = (r_blk_read_offset_select ? 8'd32 : 8'd0);
 
 	always@(posedge clk) begin
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | one_row_complete) begin
 			r_push0_0 <= 0;
 			r_push1_0 <= 0;
 			r_push2_0 <= 0;
