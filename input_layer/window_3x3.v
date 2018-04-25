@@ -81,11 +81,11 @@ module reg_fifo(
     	end else if(one_row_complete) begin
     		r_count <= 0;
     	end else if(pop & can_be_popped & push & can_be_pushed) begin
-    		r_count <=  (w_ptr_next >= r_ptr_next) ? w_ptr_next - r_ptr_next : 14- r_ptr_next + w_ptr_next;
+    		r_count <=  (w_ptr_next >= r_ptr_next) ? w_ptr_next - r_ptr_next : 15- r_ptr_next + w_ptr_next;
     	end else if(pop & can_be_popped) begin
-    		r_count <=  (w_ptr >= r_ptr_next) ? w_ptr - r_ptr_next : 14- r_ptr_next + w_ptr;
+    		r_count <=  (w_ptr >= r_ptr_next) ? w_ptr - r_ptr_next : 15- r_ptr_next + w_ptr;
     	end else if(push & can_be_pushed) begin
-    		r_count <=	(w_ptr_next >= r_ptr) ? w_ptr_next - r_ptr : 14- r_ptr + w_ptr_next;
+    		r_count <=	(w_ptr_next >= r_ptr) ? w_ptr_next - r_ptr : 15- r_ptr + w_ptr_next;
     	end
     end
 
@@ -123,13 +123,13 @@ module reg_fifo(
 			4'b0101: w_reg_file <= {reg_file[119:104],data_in[63:0], reg_file[39:0]};
 			4'b0110: w_reg_file <= {reg_file[119:112],data_in[63:0], reg_file[47:0]};
 			4'b0111: w_reg_file <= {data_in[63:0], reg_file[55:0]};
-			4'b1000: w_reg_file <= {data_in[55:0], reg_file[63:8], data_in[7:0]};
-			4'b1001: w_reg_file <= {data_in[47:0], reg_file[71:16], data_in[15:0]};
-			4'b1010: w_reg_file <= {data_in[39:0], reg_file[79:24], data_in[23:0]};
-			4'b1011: w_reg_file <= {data_in[31:0], reg_file[87:32], data_in[31:0]};
-			4'b1100: w_reg_file <= {data_in[23:0], reg_file[95:40], data_in[39:0]};
-			4'b1101: w_reg_file <= {data_in[15:0], reg_file[103:48], data_in[47:0]};
-			4'b1110: w_reg_file <= {data_in[7:0], reg_file[111:56], data_in[55:0]};
+			4'b1000: w_reg_file <= {data_in[55:0], reg_file[63:8], data_in[63:56]};
+			4'b1001: w_reg_file <= {data_in[47:0], reg_file[71:16], data_in[63:48]};
+			4'b1010: w_reg_file <= {data_in[39:0], reg_file[79:24], data_in[63:40]};
+			4'b1011: w_reg_file <= {data_in[31:0], reg_file[87:32], data_in[63:32]};
+			4'b1100: w_reg_file <= {data_in[23:0], reg_file[95:40], data_in[63:24]};
+			4'b1101: w_reg_file <= {data_in[15:0], reg_file[103:48], data_in[63:16]};
+			4'b1110: w_reg_file <= {data_in[7:0], reg_file[111:56], data_in[63:8]};
 			default : w_reg_file <= reg_file;
 		endcase
 	end
@@ -150,8 +150,8 @@ module reg_fifo(
 			4'b1010: w_data_o <= {reg_file[103:80]};
 			4'b1011: w_data_o <= {reg_file[111:88]};
 			4'b1100: w_data_o <= {reg_file[119:96]};
-			4'b1101: w_data_o <= {reg_file[119:104], reg_file[7:0]};
-			4'b1110: w_data_o <= {reg_file[119:112], reg_file[15:0]};
+			4'b1101: w_data_o <= {reg_file[7:0], reg_file[119:104]};
+			4'b1110: w_data_o <= {reg_file[15:0], reg_file[119:112]};
 			default : w_data_o <= {reg_file[23:0]};
 		endcase
 	end

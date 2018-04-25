@@ -102,6 +102,7 @@ module input_layer# (
 	assign M_axi_awcache = 4'b0011;
 	assign M_axi_awprot = 0;
 	assign M_axi_awqos = 0;
+	assign M_axi_bready = 0;
 
 	// Read Address Control Signals
 	assign M_axi_arid = 1;
@@ -248,7 +249,8 @@ module input_layer# (
 		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id - r_row_position_id <= 1);// && (r_row_position_id < input_layer_row_size -1);
 		wire fetch_rows = ( cmp_row_id | cmp_row_id? 1 : 0);
 
-		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address;
+		//wire[15:0] previous_row_id = (r_next_row_id == 0) ? 0 : r_next_row_id - 1;
+		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address - 64;
 
 
 	//--------------------------------------------------------------------------------------------
@@ -341,13 +343,23 @@ module input_layer# (
 
 
 	reg[3:0] axi_read_FSM;
+	reg r_Start; // registering start signal
+	always @(posedge clk) begin : proc_r_Start
+		if(~reset_n) begin
+			r_Start <= 0;
+		end else if(Start)begin
+			r_Start <= 1'b1;
+		end else if(end_valid) begin
+			r_Start <= 1'b0;
+		end
+	end
 
 	always@(posedge clk) begin
 		if(~reset_n | Start) begin
 			axi_read_FSM <= 0;
 		end else begin
 			case(axi_read_FSM) 
-				4'b0000 : if(in_layer_ddr3_data_rdy & fetch_rows) axi_read_FSM <= 4'b0001;
+				4'b0000 : if(in_layer_ddr3_data_rdy & fetch_rows & r_Start) axi_read_FSM <= 4'b0001;
 				4'b0001 : if(M_axi_arvalid && M_axi_arready) axi_read_FSM <= 4'b0010;
 				4'b0010 : if(M_axi_rready & M_axi_rvalid & M_axi_rlast) axi_read_FSM <= 4'b0000;
 			endcase
@@ -401,14 +413,52 @@ module input_layer# (
 	reg r_push1_2;
 	reg r_push2_2;
 
+	reg [63:0] r_fifo_0_data_in;
+	reg [63:0] r_fifo_1_data_in;
+	reg [63:0] r_fifo_2_data_in;
+
 	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
 	wire data_in_blk_ram = ((r_inputlayer_id < r_next_inputlayer_id) && (r_row_position_id == r_next_row_id)) || (r_row_position_id < r_next_row_id);
 
+
+
+	// making upper zero padding and lower zero padding
+	always @(posedge clk) begin : proc_r_fifo_0_data_in
+		if(~reset_n | Start) begin
+			r_fifo_0_data_in <= 0;
+		end else if(r_row_position_id == 0) begin
+			r_fifo_0_data_in <= 0;
+		end else begin
+			r_fifo_0_data_in <= dual_buffer_inst_doutb0;
+		end
+	end
+
+	always @(posedge clk) begin : proc_r_fifo_1_data_in
+		if(~reset_n | Start) begin
+			r_fifo_1_data_in <= 0;
+		end else begin
+			r_fifo_1_data_in <= dual_buffer_inst_doutb1;
+		end
+	end
+
+	always @(posedge clk) begin : proc_r_fifo_2_data_in
+		if(~reset_n | Start) begin
+			r_fifo_2_data_in <= 0;
+		end else if(r_row_position_id == input_layer_row_size-1) begin
+			r_fifo_2_data_in <= 0;
+		end else begin
+			r_fifo_2_data_in <= dual_buffer_inst_doutb2;
+		end
+	end
+
+
+	// register fifo instances
+	// 8 byte push and 3 byte read and one byte shift per pop
 	reg_fifo reg_fifo_inst0(
 		.clk(clk),
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
-		.data_in(dual_buffer_inst_doutb0),
+		.data_in(r_fifo_0_data_in),
 		.push(r_push0_2),
 		.pop(pop_fifo),
 		.data_o(data_o_0),
@@ -419,7 +469,7 @@ module input_layer# (
 		.clk(clk),
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
-		.data_in(dual_buffer_inst_doutb1),
+		.data_in(r_fifo_1_data_in),
 		.push(r_push1_2),
 		.pop(pop_fifo),
 		.data_o(data_o_1),
@@ -430,7 +480,7 @@ module input_layer# (
 		.clk(clk),
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
-		.data_in(dual_buffer_inst_doutb2),
+		.data_in(r_fifo_2_data_in),
 		.push(r_push2_2),
 		.pop(pop_fifo),
 		.data_o(data_o_2),
@@ -465,9 +515,9 @@ module input_layer# (
 
 	always@(posedge clk) begin
 		if(~reset_n | Start) begin
-			addrb1 <= 0;
+			addrb1 <= 8;
 		end else if(one_row_complete) begin
-			addrb1 <= 0 + {~r_blk_read_offset_select, 5'b0};
+			addrb1 <= 8 + {~r_blk_read_offset_select, 5'b0};
 		end else if(fetch_data_fifo_1) begin
 			addrb1 <= addrb1 + 1;
 		end
@@ -475,9 +525,9 @@ module input_layer# (
 
 	always@(posedge clk) begin
 		if(~reset_n | Start) begin
-			addrb2 <= 0;
+			addrb2 <= 16;
 		end else if(one_row_complete) begin
-			addrb2 <= 0 + {~r_blk_read_offset_select, 5'b0};
+			addrb2 <= 16 + {~r_blk_read_offset_select, 5'b0};
 		end else if(fetch_data_fifo_2) begin
 			addrb2 <= addrb2 + 1;
 		end

@@ -14,6 +14,8 @@ module top_sim();
 
 		reg clk;
 		reg reset_n;
+		
+		reg Start;
 
 		wire [71:0] data_o;
 		wire  		valid_o;
@@ -46,7 +48,7 @@ module top_sim();
 		wire [C_S_AXI_ID_WIDTH-1:0] w_AXI_ARID;
 		wire [C_S_AXI_ADDR_WIDTH-1:0] w_AXI_ARADDR;
 		wire [7:0] w_AXI_ARLEN;
-		wire [4 -1:0] w_AXI_ARSIZE;
+		wire [2:0] w_AXI_ARSIZE;
 		wire [1:0] w_AXI_ARBURST;
 		wire [0:0] w_AXI_ARLOCK;
 		wire [3:0] w_AXI_ARCACHE;
@@ -180,15 +182,16 @@ module top_sim();
              
     ) input_layer_inst (
 	// parameters from axi_lite
-			.axi_address(32'b0),
+	        .Start(Start),
+			.axi_address(32'h1000),
 			.no_of_input_layers(1),
-			.input_layer_row_size(55),
-			.input_layer_col_size(55),
+			.input_layer_row_size(49),
+			.input_layer_col_size(49),
 			.in_layer_ddr3_data_rdy(1'b1),
 			.input_layer_1_data(data_o),
-			.input_layer_1_valid(),
+			.input_layer_1_valid(valid_o),
 			.input_layer_1_rdy(1'b1), 
-			.input_layer_1_id(valid_o), 
+			.input_layer_1_id(), 
 
 
 			.clk(clk),				
@@ -243,14 +246,39 @@ module top_sim();
 
     always #5 clk = ~clk;
 
-
+    integer f;
     initial begin
-
+    	f = $fopen("output.txt","w");
+        Start = 0;
     	clk = 0;
     	reset_n = 0;
 
     	#500
     	reset_n = 1;
+    	Start = 1;
+    	#10
+    	Start = 0;
     end
+
+
+    wire [7:0] win_0_0 = data_o[55:48];
+    wire [7:0] win_1_0 = data_o[63:56];
+    wire [7:0] win_2_0 = data_o[71:64];
+
+    wire [7:0] win_2_1 = data_o[47:40];
+    wire [7:0] win_1_1 = data_o[39:32];
+    wire [7:0] win_0_1 = data_o[31:24];
+
+    wire [7:0] win_2_2 = data_o[23:16];
+    wire [7:0] win_1_2 = data_o[15:8];
+    wire [7:0] win_0_2 = data_o[7:0];
+
+    always @(posedge clk) begin : proc_
+    	if(reset_n & valid_o) begin
+    		$fwrite(f,"%d %d %d %d %d %d %d %d %d\n", win_0_0, win_1_0, win_2_0, win_0_1, win_1_1, win_2_1, win_0_2, win_1_2, win_2_2);
+    	end 
+    end
+
+
 
 endmodule
