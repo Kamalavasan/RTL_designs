@@ -184,7 +184,7 @@ module top_sim();
 	// parameters from axi_lite
 	        .Start(Start),
 			.axi_address(32'h1000),
-			.no_of_input_layers(1),
+			.no_of_input_layers(5),
 			.input_layer_row_size(49),
 			.input_layer_col_size(49),
 			.in_layer_ddr3_data_rdy(1'b1),
@@ -248,7 +248,7 @@ module top_sim();
 
     integer f;
     initial begin
-    	f = $fopen("output.txt","w");
+    	f = $fopen("/home/vasan/altera/AP85/output_files/output.txt","w");
         Start = 0;
     	clk = 0;
     	reset_n = 0;
@@ -258,6 +258,8 @@ module top_sim();
     	Start = 1;
     	#10
     	Start = 0;
+    	#1000000
+    	$fclose(f);
     end
 
 

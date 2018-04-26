@@ -199,7 +199,14 @@ module input_layer# (
 	end
 
 	
-
+	reg r_feed_done;
+	always @(posedge clk) begin : proc_r_feed_done
+		if(~reset_n | Start) begin
+			r_feed_done <= 0;
+		end else if((r_inputlayer_id == no_of_input_layers - 1) && (r_row_position_id == input_layer_row_size - 1) && (r_col_postion_id == input_layer_col_size - 1) && valid_transation) begin
+			r_feed_done <= 1;
+		end
+	end
 
 //-----------------------------------------------------------------------------------------------
 //-------- AXI Address calculation related to input layer----------------------------------------
@@ -240,14 +247,14 @@ module input_layer# (
 		always @(posedge clk) begin : proc_r_next_row_id
 			if(~reset_n | Start) begin
 				r_next_row_id <= 0;
-			end else if((r_next_row_id >= no_of_input_layers -1) & row_fetch_done) begin
+			end else if((r_next_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
 				r_next_row_id <= r_next_row_id + 1;
 			end
 		end
 
 		wire cmp_input_layer_id = (r_next_inputlayer_id - r_inputlayer_id <= 1) && (r_inputlayer_id < no_of_input_layers -1);
 		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id - r_row_position_id <= 1);// && (r_row_position_id < input_layer_row_size -1);
-		wire fetch_rows = ( cmp_row_id | cmp_row_id? 1 : 0);
+		wire fetch_rows = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
 
 		//wire[15:0] previous_row_id = (r_next_row_id == 0) ? 0 : r_next_row_id - 1;
 		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address - 64;
@@ -349,7 +356,7 @@ module input_layer# (
 			r_Start <= 0;
 		end else if(Start)begin
 			r_Start <= 1'b1;
-		end else if(end_valid) begin
+		end else if(r_feed_done) begin
 			r_Start <= 1'b0;
 		end
 	end
@@ -504,7 +511,7 @@ module input_layer# (
 
 
 	always@(posedge clk) begin
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | r_feed_done) begin
 			addrb0 <= 0;
 		end else if(one_row_complete) begin
 			addrb0 <= 0 + {~r_blk_read_offset_select, 5'b0};
@@ -514,7 +521,7 @@ module input_layer# (
 	end
 
 	always@(posedge clk) begin
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | r_feed_done) begin
 			addrb1 <= 8;
 		end else if(one_row_complete) begin
 			addrb1 <= 8 + {~r_blk_read_offset_select, 5'b0};
@@ -524,7 +531,7 @@ module input_layer# (
 	end
 
 	always@(posedge clk) begin
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | r_feed_done) begin
 			addrb2 <= 16;
 		end else if(one_row_complete) begin
 			addrb2 <= 16 + {~r_blk_read_offset_select, 5'b0};
@@ -547,7 +554,7 @@ module input_layer# (
 	wire[7:0]  next_blk_ram_read_offset = (r_blk_read_offset_select ? 8'd32 : 8'd0);
 
 	always@(posedge clk) begin
-		if(~reset_n | Start | one_row_complete) begin
+		if(~reset_n | Start | one_row_complete | r_feed_done) begin
 			r_push0_0 <= 0;
 			r_push1_0 <= 0;
 			r_push2_0 <= 0;
@@ -574,7 +581,7 @@ module input_layer# (
 	always@(posedge clk) begin
 		if(~reset_n | Start) begin
 			end_valid <= 0;
-		end else if((r_row_position_id == input_layer_row_size -1) &&  (no_of_input_layers-1 ? r_inputlayer_id == no_of_input_layers -2 : 1)) begin
+		end else if((r_col_postion_id == input_layer_col_size - 2) && valid_transation) begin
 			end_valid <= 1;
 		end else if(input_layer_1_rdy) begin
 			end_valid <= 0;
