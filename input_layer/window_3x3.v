@@ -50,6 +50,7 @@ module reg_fifo(
 	input clk,
 	input reset_n,
 	input one_row_complete,
+	input stride2en,
 	input [63:0] data_in,
 	input [0:0] push,
 	input [0:0] pop,
@@ -67,7 +68,10 @@ module reg_fifo(
 	reg[3:0] r_count;
 
 	wire [3:0] w_ptr_next = (w_ptr +8 >= 15) ?  w_ptr - 7 : w_ptr +8;
-	wire [3:0] r_ptr_next = (r_ptr +1 >= 15) ?  r_ptr -14 : r_ptr +1;
+	wire [3:0] r_ptr_next_stride1 = (r_ptr +1 >= 15) ?  r_ptr -14 : r_ptr +1;
+	wire [3:0] r_ptr_next_stride2 = (r_ptr +2 >= 15) ?  r_ptr -13 : r_ptr +2;
+
+	wire [3:0] r_ptr_next = (stride2en ? r_ptr_next_stride2 : r_ptr_next_stride1);
 
     assign count =  r_count;
 

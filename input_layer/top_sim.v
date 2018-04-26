@@ -184,6 +184,11 @@ module top_sim();
 	// parameters from axi_lite
 	        .Start(Start),
 			.axi_address(32'h1000),
+			.larger_block_en(0),
+			.allocated_space_per_row(64),
+			.stride2en(0),
+			.burst_per_row(1),
+			.read_burst_len(7),
 			.no_of_input_layers(5),
 			.input_layer_row_size(49),
 			.input_layer_col_size(49),

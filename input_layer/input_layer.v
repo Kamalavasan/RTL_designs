@@ -22,12 +22,17 @@ module input_layer# (
              
     ) (
 	// parameters from axi_lite
-	input Start,
-	input [C_S_AXI_ADDR_WIDTH -1 : 0] axi_address,
-	input [9:0] no_of_input_layers,
-	input [9:0] input_layer_row_size,
-	input [9:0] input_layer_col_size,
-	input [0:0] in_layer_ddr3_data_rdy,
+	input 									Start,
+	input [C_S_AXI_ADDR_WIDTH -1 : 0] 		axi_address,
+	input 									larger_block_en,
+	input [9:0] 							allocated_space_per_row,
+	input 									stride2en,
+	input [7:0] 							burst_per_row,
+	input [3:0] 							read_burst_len,
+	input [9:0] 							no_of_input_layers,
+	input [9:0] 							input_layer_row_size,
+	input [9:0] 							input_layer_col_size,
+	input [0:0] 							in_layer_ddr3_data_rdy,
 
 	// streaming data
 	// ids will increment sequentially, but provieded as extra info
@@ -106,7 +111,7 @@ module input_layer# (
 
 	// Read Address Control Signals
 	assign M_axi_arid = 1;
-	assign M_axi_arlen = 8'h17;
+	assign M_axi_arlen = read_burst_len;
 	assign M_axi_arsize = 3;
 	assign M_axi_arburst = 1;
 	assign M_axi_arlock = 0;
@@ -124,7 +129,7 @@ module input_layer# (
 	assign M_axi_wlast = 0;
 	assign M_axi_wvalid  = 0;
 
-    assign M_axi_araddr = next_AXI_burst_address;
+    assign M_axi_araddr = r_next_axi_address;
 
 
 
@@ -256,8 +261,148 @@ module input_layer# (
 		wire fetch_rows = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
 
 		//wire[15:0] previous_row_id = (r_next_row_id == 0) ? 0 : r_next_row_id - 1;
-		wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address - 64;
+		//wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address - 64;
 
+
+		// fetching rows one by one insted of fetching 3 rows in a burst
+
+		reg [7:0] r_eight_byte_algined_row_size;
+		reg [7:0] r_burst_per_row;
+		reg [7:0] r_burst_counter;
+		reg [9:0] r_allocated_space_per_row;
+
+
+		reg [15:0] r_row_base_address_counter;
+		reg [15:0] r_row_current_address_counter;
+		reg [3:0]  r_fetch_rows_FSM;
+
+
+		wire burst_done = M_axi_rready & M_axi_rvalid & M_axi_rlast;
+
+		always @(posedge clk) begin : proc_r_eight_byte_algined_row_size
+			if(~reset_n) begin
+				r_eight_byte_algined_row_size <= 0;
+				r_burst_per_row <= 0;
+				r_allocated_space_per_row <= 0;
+			end else if(Start) begin
+				r_eight_byte_algined_row_size <= (input_layer_row_size[2:0] == 0 ? input_layer_row_size : {input_layer_row_size[15:3] + 1, 2'b0});
+				r_burst_per_row <= burst_per_row;
+				r_allocated_space_per_row <= allocated_space_per_row;
+			end
+		end
+
+		always @(posedge clk) begin : proc_r_row_base_address_counter
+			if(~reset_n || Start) begin
+				r_row_base_address_counter <= 0;
+			end else if ((r_next_inputlayer_id >= no_of_input_layers -1) && row_fetch_done) begin
+				r_row_base_address_counter <= r_row_base_address_counter + allocated_space_per_row;
+			end
+		end
+
+		always @(posedge clk) begin : proc_r_row_current_address_counter
+			if(~reset_n || Start) begin
+				r_row_current_address_counter <= 0;
+			end else if(fetch_rows) begin
+				r_row_current_address_counter <= r_row_base_address_counter;
+			end else if(M_axi_rvalid & M_axi_rready) begin
+				r_row_current_address_counter <= r_row_current_address_counter + 1;
+			end
+		end
+
+		wire row_finished = ((r_burst_counter == r_burst_per_row -1) && burst_done)? 1 : 0;
+		always @(posedge clk) begin : proc_r_burst_counter
+			if(~reset_n || Start || fetch_rows || row_finished) begin
+				r_burst_counter <= 0;
+			end else if(burst_done)begin
+				r_burst_counter <= r_burst_counter + 1;
+			end
+		end
+
+		always @(posedge clk) begin : proc_r_fetch_rows_FSM
+			if(~reset_n | Start) begin
+				r_fetch_rows_FSM <= 0;
+			end else begin
+				 case(r_fetch_rows_FSM)
+				 	4'b0000: if(fetch_rows) r_fetch_rows_FSM <= 4'b0001;
+				 	4'b0001: if(row_finished) r_fetch_rows_FSM <= 4'b0010;
+				 	4'b0010: if(row_finished) r_fetch_rows_FSM <= 4'b0011;
+				 	4'b0011: if(row_finished) r_fetch_rows_FSM <= 4'b0100;
+				 	4'b0100: r_fetch_rows_FSM <= 4'b0000;
+				 	default: r_fetch_rows_FSM <= 4'b0000;
+				 endcase
+			end
+		end
+
+		reg [31:0] r_next_axi_address;
+		reg [31:0] r_next_axi_address_offset;
+
+		always @(posedge clk) begin : proc_r_next_axi_address_offset
+			if(~reset_n) begin
+				r_next_axi_address <= 0;
+			end else if(larger_block_en) begin
+				r_next_axi_address <= {r_next_inputlayer_id, 16'b0} + r_row_current_address_counter + axi_address;
+			end else begin
+				r_next_axi_address <= {r_next_inputlayer_id, 12'b0} + r_row_current_address_counter + axi_address;
+			end
+		end
+
+
+
+		// always @(posedge clk) begin : proc_r_fetch_rows_FSM
+		// 	if(~reset_n | Start) begin
+		// 		r_fetch_rows_FSM <= 0;
+		// 	end else begin
+		// 		 case(r_fetch_rows_FSM)
+		// 		 	4'b0000:begin 
+		// 		 				if(fetch_rows)
+		// 		 					r_fetch_rows_FSM <= 4'b0001; 
+		// 		 			end
+		// 		 	// fetch first row
+		// 		 	4'b0001:begin 
+		// 		 				r_next_axi_address <= r_next_axi_address_offset - 256;
+		// 		 				if(burst_done && one_burst_row) begin
+		// 		 					r_fetch_rows_FSM <= 4'b0011; 
+		// 		 				end else if(burst_done) 
+		// 		 					r_fetch_rows_FSM <= 4'b0010;
+		// 		 			end // 4'b0001:
+		// 		 	4'b0010:begin 
+		// 		 				r_next_axi_address <= r_next_axi_address_offset - 128;
+		// 		 				if(burst_done) 
+		// 		 					r_fetch_rows_FSM <= 4'b0011;
+		// 		 			end // 4'b0010:
+		// 		 	// fetch second row
+		// 		 	4'b0011:begin 
+		// 		 				r_next_axi_address <= r_next_axi_address_offset + axi_address;
+		// 		 				if(burst_done && one_burst_row) 
+		// 		 					r_fetch_rows_FSM <= 4'b0101; 
+		// 		 				else if(burst_done) 
+		// 		 					r_fetch_rows_FSM <= 4'b0100;
+		// 		 			end // 4'b0011:
+		// 		 	4'b0100:begin 
+		// 		 				r_next_axi_address <= r_next_axi_address_offset + 128;
+		// 		 				if(burst_done) 
+		// 		 					r_fetch_rows_FSM <= 4'b0101;
+		// 		 			end // 4'b0100:
+		// 		 	// fetch third row
+		// 		 	4'b0101:begin 
+		// 		 				r_next_axi_address <= r_next_axi_address_offset + 256;
+		// 		 				if(burst_done && one_burst_row) 
+		// 		 					r_fetch_rows_FSM <= 4'b0111; 
+		// 		 				else if(burst_done) 
+		// 		 					r_fetch_rows_FSM <= 4'b0110;
+		// 		 			end // 4'b0101:
+		// 		 	4'b0110:begin 
+		// 		 				r_next_axi_address <= r_next_axi_address_offset + 384;
+		// 		 				if(burst_done) 
+		// 		 					r_fetch_rows_FSM <= 4'b0111;
+		// 		 				end // 4'b0111:
+		// 		 	4'b0111:begin
+		// 		 				r_fetch_rows_FSM <= 4'b0000;
+		// 		 			end
+		// 		 	default: r_fetch_rows_FSM <= 4'b0000;
+		// 		 endcase // r_fetch_rows_FSM
+		// 	end
+		// end
 
 	//--------------------------------------------------------------------------------------------
 	//----------- logic for writing required data in block ram-----------------------------------
@@ -285,17 +430,26 @@ module input_layer# (
 	//wire[7:0]  next_blk_ram_write_offset = (r_blk_write_offset_select ? 8'd32 : 8'd0);
 	
 	wire blk_ram_write_enable = M_axi_rvalid & M_axi_rready;
-	wire row_fetch_done = M_axi_rready & M_axi_rvalid & M_axi_rlast;
+	wire row_fetch_done = (r_fetch_rows_FSM == 4'b0100) ? 1 : 0; //M_axi_rready & M_axi_rvalid & M_axi_rlast;
 
-	reg [7:0] blk_ram_wr_addr;
-	wire [7:0] w_blk_ram_wr_addr = {r_blk_write_offset_select, blk_ram_wr_addr[5:0]};
+	reg [5:0] r_blk_ram_wr_addr0;
+	reg [5:0] r_blk_ram_wr_addr1;
+	reg [7:0] r_blk_ram_wr_addr2;
+
 	always @(posedge clk) begin : proc_blk_ram_wr_addr
 		if(~reset_n | r_row_fetch_done | Start) begin
-			blk_ram_wr_addr <= 0;
-		end else if(blk_ram_write_enable) begin
-			blk_ram_wr_addr <= blk_ram_wr_addr + 1;
+			r_blk_ram_wr_addr0 <= 0;
+			r_blk_ram_wr_addr1 <= 0;
+			r_blk_ram_wr_addr2 <= 0;
+		end else begin
+			r_blk_ram_wr_addr0 <= (wea_0 ? r_blk_ram_wr_addr0 + 1 : r_blk_ram_wr_addr0);
+			r_blk_ram_wr_addr1 <= (wea_1 ? r_blk_ram_wr_addr1 + 1 : r_blk_ram_wr_addr1);
+			r_blk_ram_wr_addr2 <= (wea_2 ? r_blk_ram_wr_addr2 + 1 : r_blk_ram_wr_addr2);
 		end
 	end
+	wire [7:0] w_blk_ram_wr_addr0 = {r_blk_write_offset_select, r_blk_ram_wr_addr0[5:0]};
+	wire [7:0] w_blk_ram_wr_addr1 = {r_blk_write_offset_select, r_blk_ram_wr_addr1[5:0]};
+	wire [7:0] w_blk_ram_wr_addr2 = {r_blk_write_offset_select, r_blk_ram_wr_addr2[5:0]};
 
 //	ram64x256 ram64x256_inst_0(
 //		.clock(clk),
@@ -317,14 +471,45 @@ module input_layer# (
 	wire [7:0] w_addrb0;
 	wire [7:0] w_addrb1;
 	wire [7:0] w_addrb2;
+
+
+	// wea enable  logic
+	reg wea_0;
+	reg wea_1;
+	reg wea_2;
+
+	reg[63:0] r_M_axi_rdata_0;
+	reg[63:0] r_M_axi_rdata;
+
+	always @(posedge clk) begin : proc_r_M_axi_rdata
+		if(~reset_n) begin
+			r_M_axi_rdata <= 0;
+			r_M_axi_rdata_0 <= 0;
+		end else begin
+			r_M_axi_rdata_0 <= M_axi_rdata;
+			r_M_axi_rdata <= r_M_axi_rdata_0;
+		end
+	end
+
+	always @(posedge clk) begin : proc_wea_012
+		if(~reset_n) begin
+			wea_0 <= 0;
+			wea_1 <= 0;
+			wea_2 <= 0;
+		end else begin
+			wea_0 <= (r_fetch_rows_FSM == 4'b0001)? blk_ram_write_enable : 0;
+			wea_1 <= (r_fetch_rows_FSM == 4'b0010)? blk_ram_write_enable : 0;
+			wea_2 <= (r_fetch_rows_FSM == 4'b0011)? blk_ram_write_enable : 0;
+		end
+	end
 	
 	dual_buffer dual_buffer_inst_0
   (
 	    .clka(clk),
 	    .ena(1'b1), 
-	    .wea(blk_ram_write_enable), 
-	    .addra(w_blk_ram_wr_addr), 
-	    .dina(M_axi_rdata),
+	    .wea(wea_0), 
+	    .addra(w_blk_ram_wr_addr0), 
+	    .dina(r_M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
 	    .addrb(w_addrb0), 
@@ -335,9 +520,9 @@ module input_layer# (
   (
 	    .clka(clk),
 	    .ena(1'b1), 
-	    .wea(blk_ram_write_enable), 
-	    .addra(w_blk_ram_wr_addr), 
-	    .dina(M_axi_rdata),
+	    .wea(wea_1), 
+	    .addra(w_blk_ram_wr_addr1), 
+	    .dina(r_M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
 	    .addrb(w_addrb1), 
@@ -348,9 +533,9 @@ module input_layer# (
   (
 	    .clka(clk),
 	    .ena(1'b1), 
-	    .wea(blk_ram_write_enable), 
-	    .addra(w_blk_ram_wr_addr), 
-	    .dina(M_axi_rdata),
+	    .wea(wea_2), 
+	    .addra(w_blk_ram_wr_addr2), 
+	    .dina(r_M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
 	    .addrb(w_addrb2), 
@@ -374,11 +559,11 @@ module input_layer# (
 	end
 
 	always@(posedge clk) begin
-		if(~reset_n | Start) begin
+		if(~reset_n || Start || r_fetch_rows_FSM == 0 || r_fetch_rows_FSM >= 4'b0100) begin
 			axi_read_FSM <= 0;
 		end else begin
 			case(axi_read_FSM) 
-				4'b0000 : if(in_layer_ddr3_data_rdy & fetch_rows & r_Start) axi_read_FSM <= 4'b0001;
+				4'b0000 : if(in_layer_ddr3_data_rdy & r_Start) axi_read_FSM <= 4'b0001;
 				4'b0001 : if(M_axi_arvalid && M_axi_arready) axi_read_FSM <= 4'b0010;
 				4'b0010 : if(M_axi_rready & M_axi_rvalid & M_axi_rlast) axi_read_FSM <= 4'b0000;
 			endcase
@@ -472,6 +657,7 @@ module input_layer# (
 		.clk(clk),
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
+		.stride2en(stride2en),
 		.data_in(r_fifo_0_data_in),
 		.push(r_push0_0),
 		.pop(pop_fifo),
@@ -483,6 +669,7 @@ module input_layer# (
 		.clk(clk),
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
+		.stride2en(stride2en),
 		.data_in(r_fifo_1_data_in),
 		.push(r_push1_0),
 		.pop(pop_fifo),
@@ -494,6 +681,7 @@ module input_layer# (
 		.clk(clk),
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
+		.stride2en(stride2en),
 		.data_in(r_fifo_2_data_in),
 		.push(r_push2_0),
 		.pop(pop_fifo),
@@ -530,7 +718,7 @@ module input_layer# (
 			 	2'b01: begin r_fetch_data_FSM <= 2'b10; r_fetch_data_fifo_0 <= 0; r_fetch_data_fifo_1 <= 0; r_fetch_data_fifo_2 <= 0; end
 			 	2'b10: begin r_fetch_data_FSM <= 2'b11; r_fetch_data_fifo_0 <= 0; r_fetch_data_fifo_1 <= 0; r_fetch_data_fifo_2 <= 0; end
 			 	2'b11: begin 
-			 				r_fetch_data_FSM <= 2'b01;
+			 				//r_fetch_data_FSM <= 2'b01;
 			 				r_fetch_data_fifo_0 <= w_fetch_data_fifo_0;
 							r_fetch_data_fifo_1 <= w_fetch_data_fifo_1;
 							r_fetch_data_fifo_2 <= w_fetch_data_fifo_2;
@@ -562,9 +750,9 @@ module input_layer# (
 
 	always@(posedge clk) begin
 		if(~reset_n | Start | r_feed_done) begin
-			addrb1 <= 8;
+			addrb1 <= 0;
 		end else if(one_row_complete) begin
-			addrb1 <= 8;
+			addrb1 <= 0;
 		end else if(r_fetch_data_fifo_1) begin
 			addrb1 <= addrb1 + 1;
 		end
@@ -573,9 +761,9 @@ module input_layer# (
 
 	always@(posedge clk) begin
 		if(~reset_n | Start | r_feed_done) begin
-			addrb2 <= 16;
+			addrb2 <= 0;
 		end else if(one_row_complete) begin
-			addrb2 <= 16;
+			addrb2 <= 0;
 		end else if(r_fetch_data_fifo_2) begin
 			addrb2 <= addrb2 + 1;
 		end
