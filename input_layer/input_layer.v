@@ -420,6 +420,10 @@ module input_layer# (
 	reg r_push1_2;
 	reg r_push2_2;
 
+	reg r_push0_3;
+	reg r_push1_3;
+	reg r_push2_3;
+
 	reg [63:0] r_fifo_0_data_in;
 	reg [63:0] r_fifo_1_data_in;
 	reg [63:0] r_fifo_2_data_in;
@@ -435,7 +439,7 @@ module input_layer# (
 			r_fifo_0_data_in <= 0;
 		end else if(r_row_position_id == 0) begin
 			r_fifo_0_data_in <= 0;
-		end else begin
+		end else if(fetch_data_fifo_0)begin
 			r_fifo_0_data_in <= dual_buffer_inst_doutb0;
 		end
 	end
@@ -443,7 +447,7 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_fifo_1_data_in
 		if(~reset_n | Start) begin
 			r_fifo_1_data_in <= 0;
-		end else begin
+		end else if(fetch_data_fifo_1)begin
 			r_fifo_1_data_in <= dual_buffer_inst_doutb1;
 		end
 	end
@@ -453,7 +457,7 @@ module input_layer# (
 			r_fifo_2_data_in <= 0;
 		end else if(r_row_position_id == input_layer_row_size-1) begin
 			r_fifo_2_data_in <= 0;
-		end else begin
+		end else if(fetch_data_fifo_2)begin
 			r_fifo_2_data_in <= dual_buffer_inst_doutb2;
 		end
 	end
@@ -574,6 +578,9 @@ module input_layer# (
 			r_push0_2 <= r_push0_1;
 			r_push1_2 <= r_push1_1;
 			r_push2_2 <= r_push2_1;
+			r_push0_3 <= r_push0_2;
+			r_push1_3 <= r_push1_2;
+			r_push2_3 <= r_push2_2;
 		end
 	end
 

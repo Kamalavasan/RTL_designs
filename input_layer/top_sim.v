@@ -277,7 +277,7 @@ module top_sim();
 
     always @(posedge clk) begin : proc_
     	if(reset_n & valid_o) begin
-    		$fwrite(f,"%d %d %d %d %d %d %d %d %d\n", win_0_0, win_1_0, win_2_0, win_0_1, win_1_1, win_2_1, win_0_2, win_1_2, win_2_2);
+    		$fwrite(f,"%d, %d, %d, %d, %d, %d, %d, %d, %d,\n", win_0_0, win_1_0, win_2_0, win_0_1, win_1_1, win_2_1, win_0_2, win_1_2, win_2_2);
     	end 
     end
 
