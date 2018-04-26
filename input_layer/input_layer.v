@@ -424,21 +424,6 @@ module input_layer# (
 	reg r_push1_0;
 	reg r_push2_0;
 
-	reg r_push0_1;
-	reg r_push1_1;
-	reg r_push2_1;
-
-	reg r_push0_2;
-	reg r_push1_2;
-	reg r_push2_2;
-
-	reg r_push0_3;
-	reg r_push1_3;
-	reg r_push2_3;
-
-	reg r_push0_4;
-	reg r_push1_4;
-	reg r_push2_4;
 
 	reg [63:0] r_fifo_0_data_in;
 	reg [63:0] r_fifo_1_data_in;
@@ -605,26 +590,10 @@ module input_layer# (
 			r_push0_0 <= 0;
 			r_push1_0 <= 0;
 			r_push2_0 <= 0;
-			r_push0_1 <= 0;
-			r_push1_1 <= 0;
-			r_push2_1 <= 0;
-			r_push0_2 <= 0;
-			r_push1_2 <= 0;
-			r_push2_2 <= 0;
 		end else begin
 			r_push0_0 <= r_fetch_data_fifo_0;
 			r_push1_0 <= r_fetch_data_fifo_1;
 			r_push2_0 <= r_fetch_data_fifo_2;
-			r_push0_1 <= r_push0_0;
-			r_push1_1 <= r_push1_0;
-			r_push2_1 <= r_push2_0;
-			r_push0_2 <= r_push0_1;
-			r_push1_2 <= r_push1_1;
-			r_push2_2 <= r_push2_1;
-			r_push0_3 <= r_push0_2;
-			r_push1_3 <= r_push1_2;
-			r_push2_3 <= r_push2_2;
-
 		end
 	end
 
