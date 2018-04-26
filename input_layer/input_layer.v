@@ -151,8 +151,8 @@ module input_layer# (
 	reg [9:0] r_col_postion_id;
 
 	wire valid_transation = input_layer_1_valid & input_layer_1_rdy;
-	wire one_row_complete = (r_col_postion_id >= input_layer_col_size - 1) & valid_transation;
-	wire move_to_next_rows = (r_inputlayer_id >= no_of_input_layers - 1) & one_row_complete;
+	wire one_row_complete = (r_col_postion_id >= input_layer_col_size - 1) && valid_transation;
+	wire move_to_next_rows = (r_inputlayer_id >= no_of_input_layers - 1) && one_row_complete;
 	wire layer_complete = (r_row_position_id >= input_layer_row_size ? 1 : 0);
 
 
@@ -193,7 +193,7 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_row_position_id
 		if(~reset_n | Start) begin
 			r_row_position_id <= 0;
-		end else if(move_to_next_rows & (r_row_position_id < input_layer_row_size))begin
+		end else if(move_to_next_rows && (r_row_position_id < input_layer_row_size))begin
 			r_row_position_id <= r_row_position_id + 1;
 		end
 	end
@@ -236,18 +236,17 @@ module input_layer# (
 		always @(posedge clk) begin : proc_
 			if(~reset_n | Start) begin
 				r_next_inputlayer_id <= 0;
-			end else if((r_next_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
+			end else if((r_next_inputlayer_id >= no_of_input_layers -1) && row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
-			end
-			else if(row_fetch_done)begin
-				r_next_inputlayer_id <= r_inputlayer_id + 1;
+			end else if(row_fetch_done)begin
+				r_next_inputlayer_id <= r_next_inputlayer_id + 1;
 			end
 		end
 
 		always @(posedge clk) begin : proc_r_next_row_id
 			if(~reset_n | Start) begin
 				r_next_row_id <= 0;
-			end else if((r_next_inputlayer_id >= no_of_input_layers -1) & row_fetch_done) begin
+			end else if((r_next_inputlayer_id >= no_of_input_layers -1) && row_fetch_done) begin
 				r_next_row_id <= r_next_row_id + 1;
 			end
 		end
@@ -264,27 +263,35 @@ module input_layer# (
 	//----------- logic for writing required data in block ram-----------------------------------
 	//--------------------------------------------------------------------------------------------
 
-	wire [7:0] next_blk_ram_write_address;
-	reg r_blk_write_offset_select;
+	reg [1:0] r_blk_write_offset_select;
+	reg r_row_fetch_done;
 
 	always@(posedge clk) begin
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | r_feed_done) begin
 			r_blk_write_offset_select <= 0;
-		end
-		else if(row_fetch_done) begin
-			r_blk_write_offset_select <= ~r_blk_write_offset_select;
+		end else if(row_fetch_done) begin
+			r_blk_write_offset_select <= r_blk_write_offset_select + 1;
 		end
 	end
 
-	wire[7:0]  next_blk_ram_write_offset = (r_blk_write_offset_select ? 8'd32 : 8'd0);
+	always @(posedge clk) begin : proc_r_row_fetch_done
+		if(~reset_n) begin
+			r_row_fetch_done <= 0;
+		end else begin
+			r_row_fetch_done <= row_fetch_done;
+		end
+	end
+
+	//wire[7:0]  next_blk_ram_write_offset = (r_blk_write_offset_select ? 8'd32 : 8'd0);
 	
 	wire blk_ram_write_enable = M_axi_rvalid & M_axi_rready;
 	wire row_fetch_done = M_axi_rready & M_axi_rvalid & M_axi_rlast;
 
 	reg [7:0] blk_ram_wr_addr;
+	wire [7:0] w_blk_ram_wr_addr = {r_blk_write_offset_select, blk_ram_wr_addr[5:0]};
 	always @(posedge clk) begin : proc_blk_ram_wr_addr
-		if(~reset_n | (M_axi_arvalid & M_axi_arready) | Start) begin
-			blk_ram_wr_addr <= next_blk_ram_write_offset;
+		if(~reset_n | r_row_fetch_done | Start) begin
+			blk_ram_wr_addr <= 0;
 		end else if(blk_ram_write_enable) begin
 			blk_ram_wr_addr <= blk_ram_wr_addr + 1;
 		end
@@ -302,20 +309,25 @@ module input_layer# (
 	wire [63:0] dual_buffer_inst_doutb0;
 	wire [63:0] dual_buffer_inst_doutb1;
 	wire [63:0] dual_buffer_inst_doutb2;
+
 	reg [7:0] addrb0;
 	reg [7:0] addrb1;
 	reg [7:0] addrb2;
+
+	wire [7:0] w_addrb0;
+	wire [7:0] w_addrb1;
+	wire [7:0] w_addrb2;
 	
 	dual_buffer dual_buffer_inst_0
   (
 	    .clka(clk),
 	    .ena(1'b1), 
 	    .wea(blk_ram_write_enable), 
-	    .addra(blk_ram_wr_addr), 
+	    .addra(w_blk_ram_wr_addr), 
 	    .dina(M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
-	    .addrb(addrb0), 
+	    .addrb(w_addrb0), 
 	    .doutb(dual_buffer_inst_doutb0) 
   );
 
@@ -324,11 +336,11 @@ module input_layer# (
 	    .clka(clk),
 	    .ena(1'b1), 
 	    .wea(blk_ram_write_enable), 
-	    .addra(blk_ram_wr_addr), 
+	    .addra(w_blk_ram_wr_addr), 
 	    .dina(M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
-	    .addrb(addrb1), 
+	    .addrb(w_addrb1), 
 	    .doutb(dual_buffer_inst_doutb1) 
   );
 
@@ -337,11 +349,11 @@ module input_layer# (
 	    .clka(clk),
 	    .ena(1'b1), 
 	    .wea(blk_ram_write_enable), 
-	    .addra(blk_ram_wr_addr), 
+	    .addra(w_blk_ram_wr_addr), 
 	    .dina(M_axi_rdata),
 	    .clkb(clk),
 	    .enb(1'b1), 
-	    .addrb(addrb2), 
+	    .addrb(w_addrb2), 
 	    .doutb(dual_buffer_inst_doutb2) 
   );
 	//--------------------------------------------------------------------------------------------
@@ -385,7 +397,7 @@ module input_layer# (
 
     reg r_M_axi_arvalid;
     always @(posedge clk) begin
-        if(~reset_n | (M_axi_arvalid && M_axi_arready) | Start) begin
+        if(~reset_n || (M_axi_arvalid && M_axi_arready) || Start) begin
             r_M_axi_arvalid <= 0;
         end else if(axi_read_FSM == 4'b0001 & ~r_M_axi_arvalid) begin
             r_M_axi_arvalid <= 1;
@@ -424,6 +436,10 @@ module input_layer# (
 	reg r_push1_3;
 	reg r_push2_3;
 
+	reg r_push0_4;
+	reg r_push1_4;
+	reg r_push2_4;
+
 	reg [63:0] r_fifo_0_data_in;
 	reg [63:0] r_fifo_1_data_in;
 	reg [63:0] r_fifo_2_data_in;
@@ -431,7 +447,9 @@ module input_layer# (
 	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
 	wire data_in_blk_ram = ((r_inputlayer_id < r_next_inputlayer_id) && (r_row_position_id == r_next_row_id)) || (r_row_position_id < r_next_row_id);
 
-
+	reg r_fetch_data_fifo_0;
+	reg r_fetch_data_fifo_1;
+	reg r_fetch_data_fifo_2;
 
 	// making upper zero padding and lower zero padding
 	always @(posedge clk) begin : proc_r_fifo_0_data_in
@@ -439,7 +457,7 @@ module input_layer# (
 			r_fifo_0_data_in <= 0;
 		end else if(r_row_position_id == 0) begin
 			r_fifo_0_data_in <= 0;
-		end else if(fetch_data_fifo_0)begin
+		end else if(r_fetch_data_fifo_0) begin
 			r_fifo_0_data_in <= dual_buffer_inst_doutb0;
 		end
 	end
@@ -447,7 +465,7 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_fifo_1_data_in
 		if(~reset_n | Start) begin
 			r_fifo_1_data_in <= 0;
-		end else if(fetch_data_fifo_1)begin
+		end else if(r_fetch_data_fifo_1) begin
 			r_fifo_1_data_in <= dual_buffer_inst_doutb1;
 		end
 	end
@@ -457,7 +475,7 @@ module input_layer# (
 			r_fifo_2_data_in <= 0;
 		end else if(r_row_position_id == input_layer_row_size-1) begin
 			r_fifo_2_data_in <= 0;
-		end else if(fetch_data_fifo_2)begin
+		end else if(r_fetch_data_fifo_2) begin
 			r_fifo_2_data_in <= dual_buffer_inst_doutb2;
 		end
 	end
@@ -470,7 +488,7 @@ module input_layer# (
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
 		.data_in(r_fifo_0_data_in),
-		.push(r_push0_2),
+		.push(r_push0_0),
 		.pop(pop_fifo),
 		.data_o(data_o_0),
 		.count(fifo_count_0)
@@ -481,7 +499,7 @@ module input_layer# (
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
 		.data_in(r_fifo_1_data_in),
-		.push(r_push1_2),
+		.push(r_push1_0),
 		.pop(pop_fifo),
 		.data_o(data_o_1),
 		.count(fifo_count_1)
@@ -492,7 +510,7 @@ module input_layer# (
 		.reset_n(reset_n),
 		.one_row_complete(one_row_complete),
 		.data_in(r_fifo_2_data_in),
-		.push(r_push2_2),
+		.push(r_push2_0),
 		.pop(pop_fifo),
 		.data_o(data_o_2),
 		.count(fifo_count_2)
@@ -509,53 +527,78 @@ module input_layer# (
 	reg [7:0] r_read_ptr2;
 
 
-	assign fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_2 | r_push0_1 | r_push0_0) && ~layer_complete ? 1 : 0;
-	assign fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_2 | r_push1_1 | r_push1_0) && ~layer_complete ? 1 : 0;
-	assign fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_2 | r_push2_1 | r_push2_0) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_0) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_0) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_0) && ~layer_complete ? 1 : 0;
 
+	// state machine for fetch_data_fifo
+	reg [1:0] r_fetch_data_FSM;
+	always @(posedge clk) begin : proc_r_fetch_data_FSM
+		if(~reset_n | Start | one_row_complete) begin
+			r_fetch_data_FSM <= 0;
+			r_fetch_data_fifo_0 <= 0;
+			r_fetch_data_fifo_1 <= 0;
+			r_fetch_data_fifo_2 <= 0;
+		end else begin
+			 case(r_fetch_data_FSM)
+			 	2'b00: begin r_fetch_data_FSM <= 2'b01; r_fetch_data_fifo_0 <= 0; r_fetch_data_fifo_1 <= 0; r_fetch_data_fifo_2 <= 0; end
+			 	2'b01: begin r_fetch_data_FSM <= 2'b10; r_fetch_data_fifo_0 <= 0; r_fetch_data_fifo_1 <= 0; r_fetch_data_fifo_2 <= 0; end
+			 	2'b10: begin r_fetch_data_FSM <= 2'b11; r_fetch_data_fifo_0 <= 0; r_fetch_data_fifo_1 <= 0; r_fetch_data_fifo_2 <= 0; end
+			 	2'b11: begin 
+			 				r_fetch_data_FSM <= 2'b01;
+			 				r_fetch_data_fifo_0 <= w_fetch_data_fifo_0;
+							r_fetch_data_fifo_1 <= w_fetch_data_fifo_1;
+							r_fetch_data_fifo_2 <= w_fetch_data_fifo_2;
+			 			end
+			 endcase // r_fetch_data_FSM
+		end
+	end
+
+
+	reg [1:0] r_blk_read_offset_select;
+	always @(posedge clk) begin : proc_r_blk_read_offset_select
+		if(~reset_n | Start) begin
+			r_blk_read_offset_select <= 0;
+		end else if(one_row_complete)begin
+			r_blk_read_offset_select <= r_blk_read_offset_select + 1;
+		end
+	end
 
 	always@(posedge clk) begin
 		if(~reset_n | Start | r_feed_done) begin
-			addrb0 <= 0;
+			addrb0 <= 8'h0;
 		end else if(one_row_complete) begin
-			addrb0 <= 0 + {~r_blk_read_offset_select, 5'b0};
-		end else if(fetch_data_fifo_0) begin
+			addrb0 <= 8'h0;
+		end else if(r_fetch_data_fifo_0) begin
 			addrb0 <= addrb0 + 1;
 		end
 	end
+	assign w_addrb0 = {r_blk_read_offset_select, addrb0[5:0]};
 
 	always@(posedge clk) begin
 		if(~reset_n | Start | r_feed_done) begin
 			addrb1 <= 8;
 		end else if(one_row_complete) begin
-			addrb1 <= 8 + {~r_blk_read_offset_select, 5'b0};
-		end else if(fetch_data_fifo_1) begin
+			addrb1 <= 8;
+		end else if(r_fetch_data_fifo_1) begin
 			addrb1 <= addrb1 + 1;
 		end
 	end
+	assign w_addrb1 = {r_blk_read_offset_select, addrb1[5:0]};
 
 	always@(posedge clk) begin
 		if(~reset_n | Start | r_feed_done) begin
 			addrb2 <= 16;
 		end else if(one_row_complete) begin
-			addrb2 <= 16 + {~r_blk_read_offset_select, 5'b0};
-		end else if(fetch_data_fifo_2) begin
+			addrb2 <= 16;
+		end else if(r_fetch_data_fifo_2) begin
 			addrb2 <= addrb2 + 1;
 		end
 	end
+	assign w_addrb2 = {r_blk_read_offset_select, addrb2[5:0]};
 
+	
 
-	reg r_blk_read_offset_select;
-
-	always @(posedge clk) begin : proc_r_blk_read_offset_select
-		if(~reset_n | Start) begin
-			r_blk_read_offset_select <= 0;
-		end else if(one_row_complete)begin
-			r_blk_read_offset_select <= ~r_blk_read_offset_select;
-		end
-	end
-
-	wire[7:0]  next_blk_ram_read_offset = (r_blk_read_offset_select ? 8'd32 : 8'd0);
 
 	always@(posedge clk) begin
 		if(~reset_n | Start | one_row_complete | r_feed_done) begin
@@ -569,9 +612,9 @@ module input_layer# (
 			r_push1_2 <= 0;
 			r_push2_2 <= 0;
 		end else begin
-			r_push0_0 <= fetch_data_fifo_0;
-			r_push1_0 <= fetch_data_fifo_1;
-			r_push2_0 <= fetch_data_fifo_2;
+			r_push0_0 <= r_fetch_data_fifo_0;
+			r_push1_0 <= r_fetch_data_fifo_1;
+			r_push2_0 <= r_fetch_data_fifo_2;
 			r_push0_1 <= r_push0_0;
 			r_push1_1 <= r_push1_0;
 			r_push2_1 <= r_push2_0;
@@ -581,6 +624,7 @@ module input_layer# (
 			r_push0_3 <= r_push0_2;
 			r_push1_3 <= r_push1_2;
 			r_push2_3 <= r_push2_2;
+
 		end
 	end
 
