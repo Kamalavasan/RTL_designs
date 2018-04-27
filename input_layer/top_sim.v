@@ -183,7 +183,7 @@ module top_sim();
     ) input_layer_inst (
 	// parameters from axi_lite
 	        .Start(Start),
-			.axi_address(32'h1000),
+			.axi_address(32'hfc0),
 			.larger_block_en(0),
 			.allocated_space_per_row(64),
 			.stride2en(0),

@@ -302,10 +302,10 @@ module input_layer# (
 		always @(posedge clk) begin : proc_r_row_current_address_counter
 			if(~reset_n || Start) begin
 				r_row_current_address_counter <= 0;
-			end else if(fetch_rows) begin
+			end else if(r_fetch_rows_FSM == 4'b0000 && fetch_rows) begin
 				r_row_current_address_counter <= r_row_base_address_counter;
 			end else if(M_axi_rvalid & M_axi_rready) begin
-				r_row_current_address_counter <= r_row_current_address_counter + 1;
+				r_row_current_address_counter <= r_row_current_address_counter + 8;
 			end
 		end
 
@@ -484,10 +484,8 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_M_axi_rdata
 		if(~reset_n) begin
 			r_M_axi_rdata <= 0;
-			r_M_axi_rdata_0 <= 0;
 		end else begin
-			r_M_axi_rdata_0 <= M_axi_rdata;
-			r_M_axi_rdata <= r_M_axi_rdata_0;
+			r_M_axi_rdata <= M_axi_rdata;
 		end
 	end
 
@@ -700,9 +698,9 @@ module input_layer# (
 	reg [7:0] r_read_ptr2;
 
 
-	wire w_fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_0) && ~layer_complete ? 1 : 0;
-	wire w_fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_0) && ~layer_complete ? 1 : 0;
-	wire w_fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_0) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_0 | r_fetch_data_fifo_0) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_0 | r_fetch_data_fifo_1) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_0 | r_fetch_data_fifo_2) && ~layer_complete ? 1 : 0;
 
 	// state machine for fetch_data_fifo
 	reg [1:0] r_fetch_data_FSM;
