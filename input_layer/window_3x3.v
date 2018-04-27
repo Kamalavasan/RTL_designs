@@ -49,6 +49,7 @@ module reg_fifo(
 
 	input clk,
 	input reset_n,
+	input Start, 
 	input one_row_complete,
 	input stride2en,
 	input [63:0] data_in,
@@ -80,7 +81,7 @@ module reg_fifo(
 
 
     always@(posedge clk) begin
-    	if(~reset_n) begin
+    	if(~reset_n | Start) begin
     		r_count <= 0;
     	end else if(one_row_complete) begin
     		r_count <= 0;
@@ -95,7 +96,7 @@ module reg_fifo(
 
 
 	always @(posedge clk) begin : proc_fifo_rpt
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			r_ptr <= 0;
 		end else if(one_row_complete) begin
 			r_ptr <= 0;
@@ -108,7 +109,10 @@ module reg_fifo(
 		if(~reset_n) begin
 			w_ptr <= 1;
 			reg_file <= 0;
-		end else if(one_row_complete) begin
+		end else if((one_row_complete | Start) & stride2en) begin
+			w_ptr <= 0;
+			reg_file <= 0;
+		end else if((one_row_complete | Start)) begin
 			w_ptr <= 1;
 			reg_file <= 0;
 		end else if(push & can_be_pushed) begin

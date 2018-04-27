@@ -184,15 +184,15 @@ module top_sim();
     ) input_layer_inst (
 	// parameters from axi_lite
 	        .Start(Start),
-			.axi_address(32'hf00),
+			.axi_address(32'h1000),
 			.larger_block_en(1),
-			.allocated_space_per_row(256),
-			.stride2en(0),
+			.allocated_space_per_row(512),
+			.stride2en(1),
 			.burst_per_row(2),
 			.read_burst_len(15),
 			.no_of_input_layers(1),
-			.input_layer_row_size(224),
-			.input_layer_col_size(224),
+			.input_layer_row_size(113),
+			.input_layer_col_size(113),
 			.in_layer_ddr3_data_rdy(1'b1),
 			.input_layer_1_data(data_o),
 			.input_layer_1_valid(valid_o),
@@ -264,7 +264,7 @@ module top_sim();
     	Start = 1;
     	#10
     	Start = 0;
-    	#80000000
+    	#5000000
     	$fclose(f);
     end
 
@@ -289,7 +289,7 @@ module top_sim();
     	if(~reset_n) begin
     		r_rand_number <= 0;
     	end else begin
-    		r_rand_number <= $random%16;
+    		r_rand_number <= $random%2;
     	end
     end
 

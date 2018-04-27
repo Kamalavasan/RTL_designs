@@ -154,9 +154,22 @@ module input_layer# (
 	reg [9:0] r_inputlayer_id;
 	reg [9:0] r_row_position_id;
 	reg [9:0] r_col_postion_id;
+	reg r_col_almost_end;
+
+	always @(posedge clk) begin : proc_r_col_almost_end
+		if(~reset_n) begin
+			r_col_almost_end <= 0;
+		end else if(stride2en && (r_col_postion_id >= input_layer_col_size - 2) && valid_transation) begin
+			 r_col_almost_end <= 1;
+		end else if((r_col_postion_id >= input_layer_col_size - 2) && valid_transation) begin
+			 r_col_almost_end <= 1;
+		end else begin
+			r_col_almost_end <= 0;
+		end
+	end
 
 	wire valid_transation = input_layer_1_valid & input_layer_1_rdy;
-	wire one_row_complete = (r_col_postion_id >= input_layer_col_size - 1) && valid_transation;
+	wire one_row_complete = r_col_almost_end && valid_transation;
 	wire move_to_next_rows = (r_inputlayer_id >= no_of_input_layers - 1) && one_row_complete;
 	wire layer_complete = (r_row_position_id >= input_layer_row_size ? 1 : 0);
 
@@ -173,7 +186,7 @@ module input_layer# (
 		end else if(valid_transation && r_col_postion_id >= input_layer_col_size - 1)begin
 			r_col_postion_id <= 0;
 		end else if(valid_transation && stride2en) begin
-			r_col_postion_id <= r_col_postion_id + 2;
+			r_col_postion_id <= r_col_postion_id + 1;
 		end else if(valid_transation) begin
 			r_col_postion_id <= r_col_postion_id + 1;
 		end
@@ -241,7 +254,7 @@ module input_layer# (
 				r_next_inputlayer_id <= 0;
 			end else if((r_next_inputlayer_id >= no_of_input_layers -1) && row_fetch_done) begin
 				r_next_inputlayer_id <= 0;
-			end else if(row_fetch_done)begin
+			end else if(row_fetch_done) begin
 				r_next_inputlayer_id <= r_next_inputlayer_id + 1;
 			end
 		end
@@ -631,7 +644,7 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_fifo_0_data_in
 		if(~reset_n | Start) begin
 			r_fifo_0_data_in <= 0;
-		end else if(r_row_position_id == 0) begin
+		end else if(r_row_position_id == 0 && r_fetch_data_fifo_0 && ~stride2en) begin
 			r_fifo_0_data_in <= 0;
 		end else if(r_fetch_data_fifo_0) begin
 			r_fifo_0_data_in <= dual_buffer_inst_doutb0;
@@ -649,7 +662,7 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_fifo_2_data_in
 		if(~reset_n | Start) begin
 			r_fifo_2_data_in <= 0;
-		end else if(r_row_position_id == input_layer_row_size-1) begin
+		end else if(r_row_position_id == input_layer_row_size-1 && r_fetch_data_fifo_2 && ~stride2en) begin
 			r_fifo_2_data_in <= 0;
 		end else if(r_fetch_data_fifo_2) begin
 			r_fifo_2_data_in <= dual_buffer_inst_doutb2;
@@ -662,6 +675,7 @@ module input_layer# (
 	reg_fifo reg_fifo_inst0(
 		.clk(clk),
 		.reset_n(reset_n),
+		.Start(Start),
 		.one_row_complete(one_row_complete),
 		.stride2en(stride2en),
 		.data_in(r_fifo_0_data_in),
@@ -674,6 +688,7 @@ module input_layer# (
 	reg_fifo reg_fifo_inst1(
 		.clk(clk),
 		.reset_n(reset_n),
+		.Start(Start),
 		.one_row_complete(one_row_complete),
 		.stride2en(stride2en),
 		.data_in(r_fifo_1_data_in),
@@ -686,6 +701,7 @@ module input_layer# (
 	reg_fifo reg_fifo_inst2(
 		.clk(clk),
 		.reset_n(reset_n),
+		.Start(Start),
 		.one_row_complete(one_row_complete),
 		.stride2en(stride2en),
 		.data_in(r_fifo_2_data_in),
@@ -803,7 +819,7 @@ module input_layer# (
 	end
 
 	assign input_layer_1_valid = data_is_available | end_valid;
-	assign input_layer_1_data = end_valid ?{8'b0,data_o_0[15:0], 8'b0,data_o_1[15:0], 8'b0, data_o_2[15:0]} : {data_o_0, data_o_1, data_o_2};
+	assign input_layer_1_data = (end_valid & ~stride2en) ?{8'b0,data_o_0[15:0], 8'b0,data_o_1[15:0], 8'b0, data_o_2[15:0]} : {data_o_0, data_o_1, data_o_2};
 
 endmodule
 
