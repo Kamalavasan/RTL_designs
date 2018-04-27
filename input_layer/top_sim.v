@@ -19,6 +19,7 @@ module top_sim();
 
 		wire [71:0] data_o;
 		wire  		valid_o;
+		wire w_input_layer_1_rdy;
 
 
 		wire [C_S_AXI_ID_WIDTH-1:0] w_AXI_AWID;
@@ -195,7 +196,7 @@ module top_sim();
 			.in_layer_ddr3_data_rdy(1'b1),
 			.input_layer_1_data(data_o),
 			.input_layer_1_valid(valid_o),
-			.input_layer_1_rdy(1'b1), 
+			.input_layer_1_rdy(w_input_layer_1_rdy), 
 			.input_layer_1_id(), 
 
 
@@ -280,8 +281,20 @@ module top_sim();
     wire [7:0] win_1_2 = data_o[15:8];
     wire [7:0] win_0_2 = data_o[7:0];
 
-    always @(posedge clk) begin : proc_
-    	if(reset_n & valid_o) begin
+    reg[1:0] r_rand_number;
+    reg r_ready;
+
+    assign w_input_layer_1_rdy = (r_rand_number== 1 ? 1 : 0);
+    always @(posedge clk) begin : proc_r_rand_number
+    	if(~reset_n) begin
+    		r_rand_number <= 0;
+    	end else begin
+    		r_rand_number <= $random%4;
+    	end
+    end
+
+    always @(posedge clk) begin : proc_fwrite
+    	if(reset_n & valid_o & w_input_layer_1_rdy) begin
     		$fwrite(f,"%d, %d, %d, %d, %d, %d, %d, %d, %d,\n", win_0_0, win_1_0, win_2_0, win_0_1, win_1_1, win_2_1, win_0_2, win_1_2, win_2_2);
     	end 
     end

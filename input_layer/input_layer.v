@@ -256,9 +256,19 @@ module input_layer# (
 			end
 		end
 
-		wire cmp_input_layer_id = (r_next_inputlayer_id - r_inputlayer_id <= 1) && (r_inputlayer_id < no_of_input_layers -1);
-		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id - r_row_position_id <= 1);// && (r_row_position_id < input_layer_row_size -1);
-		wire fetch_rows = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
+		wire cmp_input_layer_id = (r_next_inputlayer_id - r_inputlayer_id <= 1) && (r_next_row_id == r_row_position_id);
+		wire cmp_row_id = (r_inputlayer_id == no_of_input_layers -1 ) && (r_next_row_id - r_row_position_id <= 1) && (r_next_inputlayer_id < 1);
+		wire w_fetch_rows = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
+
+		// registering fetch_rows
+		reg r_fetch_rows;
+		always @(posedge clk) begin : proc_r_fetch_rows
+			if(~reset_n) begin
+				r_fetch_rows <= 0;
+			end else begin
+				r_fetch_rows <= w_fetch_rows;
+			end
+		end
 
 		//wire[15:0] previous_row_id = (r_next_row_id == 0) ? 0 : r_next_row_id - 1;
 		//wire[31:0] next_AXI_burst_address = {r_next_inputlayer_id, 12'b0} + {r_next_row_id, 6'b0} + axi_address - 64;
@@ -281,11 +291,11 @@ module input_layer# (
 
 		always @(posedge clk) begin : proc_r_eight_byte_algined_row_size
 			if(~reset_n) begin
-				r_eight_byte_algined_row_size <= 0;
+				//r_eight_byte_algined_row_size <= 0;
 				r_burst_per_row <= 0;
 				r_allocated_space_per_row <= 0;
 			end else if(Start) begin
-				r_eight_byte_algined_row_size <= (input_layer_row_size[2:0] == 0 ? input_layer_row_size : {input_layer_row_size[15:3] + 1, 2'b0});
+				//r_eight_byte_algined_row_size <= (input_layer_row_size[2:0] == 0 ? input_layer_row_size : {input_layer_row_size[15:3] + 1, 2'b0});
 				r_burst_per_row <= burst_per_row;
 				r_allocated_space_per_row <= allocated_space_per_row;
 			end
@@ -302,7 +312,7 @@ module input_layer# (
 		always @(posedge clk) begin : proc_r_row_current_address_counter
 			if(~reset_n || Start) begin
 				r_row_current_address_counter <= 0;
-			end else if(r_fetch_rows_FSM == 4'b0000 && fetch_rows) begin
+			end else if(r_fetch_rows_FSM == 4'b0000 && r_fetch_rows) begin
 				r_row_current_address_counter <= r_row_base_address_counter;
 			end else if(M_axi_rvalid & M_axi_rready) begin
 				r_row_current_address_counter <= r_row_current_address_counter + 8;
@@ -311,7 +321,7 @@ module input_layer# (
 
 		wire row_finished = ((r_burst_counter == r_burst_per_row -1) && burst_done)? 1 : 0;
 		always @(posedge clk) begin : proc_r_burst_counter
-			if(~reset_n || Start || fetch_rows || row_finished) begin
+			if(~reset_n || Start || r_fetch_rows || row_finished) begin
 				r_burst_counter <= 0;
 			end else if(burst_done)begin
 				r_burst_counter <= r_burst_counter + 1;
@@ -323,7 +333,7 @@ module input_layer# (
 				r_fetch_rows_FSM <= 0;
 			end else begin
 				 case(r_fetch_rows_FSM)
-				 	4'b0000: if(fetch_rows) r_fetch_rows_FSM <= 4'b0001;
+				 	4'b0000: if(r_fetch_rows) r_fetch_rows_FSM <= 4'b0001;
 				 	4'b0001: if(row_finished) r_fetch_rows_FSM <= 4'b0010;
 				 	4'b0010: if(row_finished) r_fetch_rows_FSM <= 4'b0011;
 				 	4'b0011: if(row_finished) r_fetch_rows_FSM <= 4'b0100;
@@ -354,7 +364,7 @@ module input_layer# (
 		// 	end else begin
 		// 		 case(r_fetch_rows_FSM)
 		// 		 	4'b0000:begin 
-		// 		 				if(fetch_rows)
+		// 		 				if(r_fetch_rows)
 		// 		 					r_fetch_rows_FSM <= 4'b0001; 
 		// 		 			end
 		// 		 	// fetch first row
@@ -612,7 +622,7 @@ module input_layer# (
 	reg [63:0] r_fifo_1_data_in;
 	reg [63:0] r_fifo_2_data_in;
 
-	wire pop_fifo = input_layer_1_valid & input_layer_1_rdy;
+	wire pop_fifo = valid_transation;
 	wire data_in_blk_ram = ((r_inputlayer_id < r_next_inputlayer_id) && (r_row_position_id == r_next_row_id)) || (r_row_position_id < r_next_row_id);
 
 	reg r_fetch_data_fifo_0;
@@ -698,9 +708,9 @@ module input_layer# (
 	reg [7:0] r_read_ptr2;
 
 
-	wire w_fetch_data_fifo_0 = (fifo_count_0 <= 7) && data_in_blk_ram && ~(r_push0_0 | r_fetch_data_fifo_0) && ~layer_complete ? 1 : 0;
-	wire w_fetch_data_fifo_1 = (fifo_count_1 <= 7) && data_in_blk_ram && ~(r_push1_0 | r_fetch_data_fifo_1) && ~layer_complete ? 1 : 0;
-	wire w_fetch_data_fifo_2 = (fifo_count_2 <= 7) && data_in_blk_ram && ~(r_push2_0 | r_fetch_data_fifo_2) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_0 = (fifo_count_0 <= 6) && data_in_blk_ram && ~(r_push0_0 | r_fetch_data_fifo_0) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_1 = (fifo_count_1 <= 6) && data_in_blk_ram && ~(r_push1_0 | r_fetch_data_fifo_1) && ~layer_complete ? 1 : 0;
+	wire w_fetch_data_fifo_2 = (fifo_count_2 <= 6) && data_in_blk_ram && ~(r_push2_0 | r_fetch_data_fifo_2) && ~layer_complete ? 1 : 0;
 
 	// state machine for fetch_data_fifo
 	reg [1:0] r_fetch_data_FSM;
@@ -789,7 +799,7 @@ module input_layer# (
 			end_valid <= 0;
 		end else if((r_col_postion_id == input_layer_col_size - 2) && valid_transation) begin
 			end_valid <= 1;
-		end else if(input_layer_1_rdy) begin
+		end else if(valid_transation) begin
 			end_valid <= 0;
 		end
 	end
