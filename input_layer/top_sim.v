@@ -184,15 +184,15 @@ module top_sim();
     ) input_layer_inst (
 	// parameters from axi_lite
 	        .Start(Start),
-			.axi_address(32'hfc0),
-			.larger_block_en(0),
-			.allocated_space_per_row(64),
+			.axi_address(32'hf00),
+			.larger_block_en(1),
+			.allocated_space_per_row(256),
 			.stride2en(0),
-			.burst_per_row(1),
-			.read_burst_len(7),
-			.no_of_input_layers(5),
-			.input_layer_row_size(49),
-			.input_layer_col_size(49),
+			.burst_per_row(2),
+			.read_burst_len(15),
+			.no_of_input_layers(1),
+			.input_layer_row_size(224),
+			.input_layer_col_size(224),
 			.in_layer_ddr3_data_rdy(1'b1),
 			.input_layer_1_data(data_o),
 			.input_layer_1_valid(valid_o),
@@ -264,7 +264,7 @@ module top_sim();
     	Start = 1;
     	#10
     	Start = 0;
-    	#1000000
+    	#80000000
     	$fclose(f);
     end
 
@@ -281,7 +281,7 @@ module top_sim();
     wire [7:0] win_1_2 = data_o[15:8];
     wire [7:0] win_0_2 = data_o[7:0];
 
-    reg[1:0] r_rand_number;
+    reg[3:0] r_rand_number;
     reg r_ready;
 
     assign w_input_layer_1_rdy = (r_rand_number== 1 ? 1 : 0);
@@ -289,7 +289,7 @@ module top_sim();
     	if(~reset_n) begin
     		r_rand_number <= 0;
     	end else begin
-    		r_rand_number <= $random%4;
+    		r_rand_number <= $random%16;
     	end
     end
 

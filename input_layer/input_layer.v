@@ -170,12 +170,12 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_col_postion_id
 		if(~reset_n | Start |layer_complete) begin
 			r_col_postion_id <= 0;
-		end else if(valid_transation)begin
-			 if(r_col_postion_id >= input_layer_col_size - 1) begin
-			 	r_col_postion_id <= 0;
-			 end else begin
-			 	r_col_postion_id <= r_col_postion_id + 1;
-			 end
+		end else if(valid_transation && r_col_postion_id >= input_layer_col_size - 1)begin
+			r_col_postion_id <= 0;
+		end else if(valid_transation && stride2en) begin
+			r_col_postion_id <= r_col_postion_id + 2;
+		end else if(valid_transation) begin
+			r_col_postion_id <= r_col_postion_id + 1;
 		end
 	end
 
@@ -184,12 +184,10 @@ module input_layer# (
 	always @(posedge clk) begin : proc_r_inputlayer_id
 		if(~reset_n | Start | layer_complete) begin
 			r_inputlayer_id <= 0;
-		end else if(one_row_complete)begin
-			 if(move_to_next_rows) begin
-			 	r_inputlayer_id <= 0;
-			 end else begin
-			 	r_inputlayer_id <= r_inputlayer_id + 1;
-			 end
+		end else if(one_row_complete && move_to_next_rows)begin
+			r_inputlayer_id <= 0;
+		end else if(one_row_complete) begin
+			r_inputlayer_id <= r_inputlayer_id + 1;
 		end
 	end
 
@@ -321,7 +319,7 @@ module input_layer# (
 
 		wire row_finished = ((r_burst_counter == r_burst_per_row -1) && burst_done)? 1 : 0;
 		always @(posedge clk) begin : proc_r_burst_counter
-			if(~reset_n || Start || r_fetch_rows || row_finished) begin
+			if(~reset_n || Start || (r_fetch_rows_FSM == 4'b0000 &&r_fetch_rows) || row_finished) begin
 				r_burst_counter <= 0;
 			end else if(burst_done)begin
 				r_burst_counter <= r_burst_counter + 1;
