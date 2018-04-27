@@ -157,13 +157,13 @@ module input_layer# (
 	reg r_col_almost_end;
 
 	always @(posedge clk) begin : proc_r_col_almost_end
-		if(~reset_n) begin
+		if(~reset_n | Start) begin
 			r_col_almost_end <= 0;
-		end else if(stride2en && (r_col_postion_id >= input_layer_col_size - 2) && valid_transation) begin
+		end else if(stride2en && (r_col_postion_id == input_layer_col_size - 2) && valid_transation) begin
 			 r_col_almost_end <= 1;
-		end else if((r_col_postion_id >= input_layer_col_size - 2) && valid_transation) begin
+		end else if((r_col_postion_id == input_layer_col_size - 2) && valid_transation) begin
 			 r_col_almost_end <= 1;
-		end else begin
+		end else if(valid_transation) begin
 			r_col_almost_end <= 0;
 		end
 	end
