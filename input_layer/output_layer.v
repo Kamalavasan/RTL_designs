@@ -8,11 +8,15 @@ module output_layer# (
              
     ) (
 	// parameters from axi_lite
-	input Start,
-	input [C_S_AXI_ADDR_WIDTH -1 : 0] axi_address,
-	input [9:0] no_of_input_layers,
-	input [9:0] input_layer_row_size,
-	input [9:0] input_layer_col_size,
+	input 												Start,
+	input 	[C_S_AXI_ADDR_WIDTH -1 : 0] 				axi_address,
+	input 	[9:0] 										no_of_input_layers,
+	input 	[9:0] 										input_layer_row_size,
+	input 	[9:0] 										input_layer_col_size,
+	input 												larger_block_en,
+	input 	[9:0] 										allocated_space_per_row,
+	input 	[7:0] 										burst_per_row,
+	input 	[3:0] 										read_burst_len,
 
 
 	// streaming data
@@ -45,7 +49,13 @@ module output_layer# (
 	output  wire 			[C_S_AXI_DATA_WIDTH/8-1:0]				M_axi_wstrb,		
 	output  wire  													M_axi_wlast,		
 	output  wire 													M_axi_wvalid,		
-	input   wire 													M_axi_wready
+	input   wire 													M_axi_wready,
+
+
+	input	wire [C_S_AXI_ID_WIDTH-1:0] 							M_axi_bid,
+	input	wire [1:0] 												M_axi_bresp,
+	input	wire [0:0] 												M_axi_bvalid,
+	output	wire [0:0] 												M_axi_bready
 	);
 
 
@@ -107,29 +117,75 @@ module output_layer# (
 	reg [9:0] r_row_id_axi;
 	reg [9:0] r_input_layer_id_axi;
 
+	reg r_axi_row_write_complete;
+
 	reg r_fifo_col_almost_end;
+	wire w_fifo_col_complete;
+	reg r_fifo_col_complete;
+	reg r_fifo_col_complete_p1;
+	reg r_fifo_col_complete_p2;
+
+
 	reg r_fifo_layer_complete;
 
 
-// logic for fifo counters
-// incrementing r_col_id per fifo_rd_en
+
+
+//-------------------------------------------------------------------------------------------------
+//-------------------- Condition to fetch from fifo------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+	wire cmp_input_layer_id = (r_input_layer_id_fifo - r_input_layer_id_axi <= 1) && (r_row_id_fifo == r_row_id_axi);
+	wire cmp_row_id = (r_input_layer_id_axi == no_of_input_layers -1 ) && (r_row_id_fifo - r_row_id_axi <= 1) && (r_input_layer_id_fifo < 1);
+	wire w_fetch_from_fifo = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
+
+
+	reg r_pull_from_fifo;
+	always @(posedge clk) begin : proc_r_pull_from_fifo
+		if(~reset_n) begin
+			r_pull_from_fifo <= 0;
+		end else begin
+			r_pull_from_fifo <= w_fetch_from_fifo;
+		end
+	end
+
+
+
+
+//-------------------------------------------------------------------------------------------------
+//-------------------- r_col_id_fifo, r_input_layer_id_fifo & r_row_id_fifo -----------------------
+//-------------------------------------------------------------------------------------------------
 
 	always @(posedge clk) begin : proc_r_fifo_col_almost_end
 		if(~reset_n | Start) begin
 			r_fifo_col_almost_end <= 0;
-		end else if(out_fifo_1_rd_en && r_col_id_fifo == input_layer_col_size-2) begin
+		end else if(r_out_fifo_1_rd_en && r_col_id_fifo == input_layer_col_size-2) begin
 			r_fifo_col_almost_end <= 1;
-		end else if(out_fifo_1_rd_en)begin
+		end else if(r_out_fifo_1_rd_en)begin
 			r_fifo_col_almost_end <= 0;
+		end
+	end
+
+	assign w_fifo_col_complete = r_out_fifo_1_rd_en && r_fifo_col_almost_end;
+
+	// registering w_fifo_col_complete
+	always @(posedge clk) begin : proc_r_fifo_col_complete
+		if(~reset_n) begin
+			r_fifo_col_complete <= 0;
+			r_fifo_col_complete_p1 <= 0;
+			r_fifo_col_complete_p2 <= 0;
+		end else begin
+			r_fifo_col_complete <= w_fifo_col_complete;
+			r_fifo_col_complete_p1 <= r_fifo_col_complete;
+			r_fifo_col_complete_p2 <= r_fifo_col_complete_p1;
 		end
 	end
 
 	always @(posedge clk) begin : proc_r_col_id_fifo
 		if(~reset_n | Start) begin
 			r_col_id_fifo <= 0;
-		end else if(out_fifo_1_rd_en && r_fifo_col_almost_end)begin
+		end else if(w_fifo_col_complete)begin
 			r_col_id_fifo <= 0;
-		end else if(out_fifo_1_rd_en) begin
+		end else if(r_out_fifo_1_rd_en) begin
 			r_col_id_fifo <= r_col_id_fifo + 1;
 		end
 	end
@@ -137,9 +193,9 @@ module output_layer# (
 	always @(posedge clk) begin : proc_r_input_layer_id_fifo
 		if(~reset_n | Start) begin
 			r_input_layer_id_fifo <= 0;
-		end else if(out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_input_layers-1) begin
+		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_input_layers-1) begin
 			r_input_layer_id_fifo <= 0;
-		end else if(out_fifo_1_rd_en && r_fifo_col_almost_end) begin
+		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end) begin
 			r_input_layer_id_fifo <= r_input_layer_id_fifo + 1;
 		end
 	end
@@ -147,7 +203,7 @@ module output_layer# (
 	always @(posedge clk) begin : proc_r_row_id_fifo
 		if(~reset_n | Start) begin
 			r_row_id_fifo <= 0;
-		end else if(out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_input_layers-1)begin
+		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_input_layers-1)begin
 			r_row_id_fifo <= r_row_id_fifo + 1;
 		end
 	end
@@ -165,6 +221,9 @@ module output_layer# (
 		end
 	end
 
+	
+
+
 
 
 // FSM for writing fifo contents to blk ram
@@ -173,33 +232,63 @@ module output_layer# (
 	reg [63:0] r_dina;
 	reg r_wea;
 
-	// registering out_fifo_1_rd_en to syn with 
-	// out fifo data
 
+
+//--------------------------------------------------------------------------------------------
+// -------------   registering out_fifo_1_rd_en to syn with ----------------------------------
+//--------------------------------------------------------------------------------------------
 	reg r_out_fifo_1_rd_en;
-	always @(posedge clk) begin : proc_r_out_fifo_1_rd_en
-		if(~reset_n) begin
-			r_out_fifo_1_rd_en <= 0;
-		end else begin
-			r_out_fifo_1_rd_en <= out_fifo_1_rd_en;
+	reg r_out_fifo_1_rd_en_p1;
+
+	reg[1:0] fifo_rd_en_delay;
+	always @(posedge clk) begin : proc_fifo_rd_en_delay
+		if(~reset_n | Start | w_fifo_col_complete) begin
+			fifo_rd_en_delay <= 0;
+		end else if(fifo_rd_en_delay <= 2)begin
+			fifo_rd_en_delay <= fifo_rd_en_delay + 1;
 		end
 	end
 
+	always @(posedge clk) begin : proc_r_out_fifo_1_rd_en
+		if(~reset_n || fifo_rd_en_delay <= 2 || w_fifo_col_complete) begin
+			r_out_fifo_1_rd_en <= 0;
+		end else if(r_pull_from_fifo && out_fifo_1_dcount >= 2)begin
+			r_out_fifo_1_rd_en <= 1;
+		end else if(~r_out_fifo_1_rd_en && r_pull_from_fifo && out_fifo_1_dcount == 1) begin
+			r_out_fifo_1_rd_en <= 1;
+		end else begin
+			r_out_fifo_1_rd_en <= 0;
+		end
+	end
+
+	always @(posedge clk) begin : proc_r_out_fifo_1_rd_en_p1
+		if(~reset_n) begin
+			r_out_fifo_1_rd_en_p1 <= 0;
+		end else begin
+			r_out_fifo_1_rd_en_p1 <= r_out_fifo_1_rd_en;
+		end
+	end
+
+	assign out_fifo_1_rd_en = r_out_fifo_1_rd_en;
+
+//--------------------------------------------------------------------------------------------
+//-------------- Forming a  8 byte ROW -------------------------------------------------------
+//--------------------------------------------------------------------------------------------
 	always @(posedge clk) begin : proc_r_FSM_row_former
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | r_fifo_col_complete_p1) begin
 			r_FSM_row_former <= 0;
-		end else if(r_out_fifo_1_rd_en && r_FSM_row_former == 7)begin
+		end else if(r_out_fifo_1_rd_en_p1 && r_FSM_row_former == 7)begin
 			r_FSM_row_former <= 0;
-		end else if(r_out_fifo_1_rd_en) begin
+		end else if(r_out_fifo_1_rd_en_p1) begin
 			r_FSM_row_former <= r_FSM_row_former + 1;
 		end
 	end
 
 	// latching fifo data to reg
 	always @(posedge clk) begin : proc_r_blk_row
-		if(~reset_n | Start) begin
+		if(~reset_n | Start | r_fifo_col_complete_p1) begin
 			r_blk_row <= 0;
-		end else if(r_out_fifo_1_rd_en) begin
+		end else if(r_out_fifo_1_rd_en_p1) begin
 			 case(r_FSM_row_former)
 			 	4'b0000 : r_blk_row[7:0] <= output_layer_1_data;
 			 	4'b0001 : r_blk_row[15:8] <= output_layer_1_data;
@@ -216,8 +305,10 @@ module output_layer# (
 	always @(posedge clk) begin : proc_r_dina
 		if(~reset_n | Start) begin
 			r_dina <= 0;
-		end else if(r_FSM_row_former == 7 && r_out_fifo_1_rd_en) begin
+		end else if(r_FSM_row_former == 7 && r_out_fifo_1_rd_en_p1) begin
 			r_dina <= {output_layer_1_data, r_blk_row[55:0]};
+		end else if(r_fifo_col_complete_p1) begin
+			r_dina <= r_blk_row;
 		end
 	end
 
@@ -225,27 +316,34 @@ module output_layer# (
 		if(~reset_n) begin
 			r_wea <= 0;
 		end else begin
-			r_wea <= (r_FSM_row_former == 7 && r_out_fifo_1_rd_en) ? 1 : 0;
+			r_wea <= (r_FSM_row_former == 7 && r_out_fifo_1_rd_en_p1) || r_fifo_col_complete_p1 ? 1 : 0;
 		end
 	end
 
+
+
+//------------------------------------------------------------------------------------------
+//-------------------- Block RAM control signals -------------------------------------------
+//------------------------------------------------------------------------------------------
 	// block ram address counter and offset select
 	reg [1:0] r_blk_write_offset;
+	reg [1:0] r_blk_read_offset;
 	reg [5:0] r_addra;
+	reg [5:0] r_addrb;
 
 	// need to adjust this signal to sync with
 	// data and addra
-	wire row_complete = out_fifo_1_rd_en && r_fifo_col_almost_en;
+	//wire row_complete = out_fifo_1_rd_en && r_fifo_col_almost_end;
 	always @(posedge clk) begin : proc_r_blk_write_offset
 		if(~reset_n | Start) begin
 			r_blk_write_offset <= 0;
-		end else if(row_complete)begin
+		end else if(r_fifo_col_complete_p2)begin
 			r_blk_write_offset <= r_blk_write_offset + 1;
 		end
 	end
 
 	always @(posedge clk) begin : proc_r_addra
-		if(~reset_n | Start | row_complete) begin
+		if(~reset_n | Start | r_fifo_col_complete_p2) begin
 			r_addra <= 0;
 		end else if(r_wea)begin
 			r_addra <= r_addra + 1;;
@@ -268,5 +366,144 @@ module output_layer# (
 	    .doutb(dual_buffer_inst_doutb2) 
   );
  
+
+
+
+//-------------------------------------------------------------------------------------------
+//------------------- udating axi related input layer , row & col ID ------------------------
+//-------------------------------------------------------------------------------------------
+
+
+ 	reg [7:0] r_burst_counter;
+ 	wire burst_done = M_axi_wready & M_axi_wvalid & M_axi_wlast;
+ 	always @(posedge clk) begin : proc_r_burst_counter
+ 		if(~reset_n | Start) begin
+ 			r_burst_counter <= 0;
+ 		end else if(burst_done && r_burst_counter >= burst_per_row - 1 ) begin
+ 			r_burst_counter <= 0;
+ 		end else if(burst_done) begin
+ 			r_burst_counter <= r_burst_counter + 1;
+ 		end
+ 	end
+
+
+ 	
+ 	always @(posedge clk) begin : proc_r_axi_row_write_complete
+ 		if(~reset_n | Start) begin
+ 			r_axi_row_write_complete <= 0;
+ 		end else begin
+ 			r_axi_row_write_complete <= (burst_done && r_burst_counter >= burst_per_row - 1) ? 1 : 0;
+ 		end
+ 	end
+
+ 	always @(posedge clk) begin : proc_r_input_layer_id_axi
+ 		if(~reset_n | Start) begin
+ 			r_input_layer_id_axi <= 0;
+ 		end else if(r_axi_row_write_complete && r_input_layer_id_axi >= no_of_input_layers - 1) begin
+ 			r_input_layer_id_axi <= 0;
+ 		end else if(r_axi_row_write_complete) begin
+ 			r_input_layer_id_axi <= r_input_layer_id_axi + 1;
+ 		end
+ 	end
+
+ 	always @(posedge clk) begin : proc_r_row_id_axi
+ 		if(~reset_n | Start) begin
+ 			r_row_id_axi <= 0;
+ 		end else if(r_axi_row_write_complete && r_input_layer_id_axi >= no_of_input_layers - 1) begin
+ 			r_row_id_axi <= r_row_id_axi + 1;
+ 		end
+ 	end
+
+ 	always @(posedge clk) begin : proc_r_blk_read_offset
+ 		if(~reset_n) begin
+ 			r_blk_read_offset <= 0;
+ 		end else if(r_axi_row_write_complete) begin
+ 			r_blk_read_offset <= r_blk_read_offset + 1;
+ 		end
+ 	end
+
+
+ 	always @(posedge clk) begin : proc_r_addrb
+ 		if(~reset_n | Start | r_axi_row_write_complete) begin
+ 			r_addrb <= 0;
+ 		end else if(M_axi_wvalid & M_axi_wready) begin
+ 			r_addrb <= r_addrb + 1;
+ 		end
+ 	end
+
+//********************************************************************************
+//********** AXI Write **********************************************************
+//********************************************************************************
+
+	reg[3:0] r_axi_write_FSM;
+    always@(posedge clk) begin
+        if(~reset_n || Start) begin
+            r_axi_write_FSM <= 0;
+        end else begin 
+            case(r_axi_write_FSM) 
+                4'b0000 : if(M_axi_awvalid & M_axi_awready)    r_axi_write_FSM <= 4'b0001;
+                4'b0001 : if(M_axi_wvalid & M_axi_wready & M_axi_wlast) r_axi_write_FSM<= 4'b0010;
+                4'b0010 : if(r_M_axi_bready & M_axi_bvalid) r_axi_write_FSM<= 4'b0000;
+            endcase
+        end
+    end
+
+	// Valid for write address
+	reg r_M_axi_awvalid;
+	always @(posedge clk) begin
+		if(   ~reset_n || Start) 
+			r_M_axi_awvalid <= 0;
+		else if(r_M_axi_awvalid && M_axi_awready)
+		    r_M_axi_awvalid <= 0;
+	    else if(~r_M_axi_awvalid && r_axi_write_FSM == 4'b0000) 
+            r_M_axi_awvalid <= 1;
+	end
+	assign M_axi_awvalid = r_M_axi_awvalid;
+
+
+	// Valid for write data
+	reg r_M_axi_wvalid;
+	always @(posedge clk) begin
+		if(~reset_n | Start) 
+			r_M_axi_wvalid <= 0;
+		else if (r_M_axi_wlast && r_M_axi_wvalid && M_axi_wready)
+		    r_M_axi_wvalid <= 0;
+		else  if(r_axi_write_FSM == 4'b0001)
+            r_M_axi_wvalid <= 1;
+	end
+	assign M_axi_wvalid = r_M_axi_wvalid;
+
+
+	// valid for response signal
+	reg r_M_axi_bready;
+	always @(posedge clk) begin
+	   if(~reset_n || M_axi_wlast && M_axi_wvalid && M_axi_wready ||  Start)
+	         r_M_axi_bready <= 0;    
+	   else
+		     r_M_axi_bready <= 1; 		  
+	end
+	assign M_axi_bready = r_M_axi_bready;
+
+
+	reg [7:0] r_M_w_burst_count;
+	always @(posedge clk) begin
+        if(~reset_n || (M_axi_wlast && M_axi_wvalid && M_axi_wready) || Start) begin
+            r_M_w_burst_count <= 0;
+        end
+        else if(M_axi_wvalid && M_axi_wready)begin
+            r_M_w_burst_count <= r_M_w_burst_count + 1;
+        end
+    end
+
+    reg r_M_axi_wlast;
+    always @(posedge clk) begin
+	    if(~reset_n | Start)
+	        r_M_axi_wlast <= 0;
+	    else if((r_M_w_burst_count == M_axi_awlen -1) && M_axi_wvalid && M_axi_wready)
+	        r_M_axi_wlast <= 1;
+	    else
+	        r_M_axi_wlast <= 0;
+    end
+    assign M_axi_wlast = r_M_axi_wlast;
 
 endmodule // output_layer

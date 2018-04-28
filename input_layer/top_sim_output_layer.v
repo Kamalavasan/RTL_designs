@@ -173,91 +173,98 @@ module top_sim();
 
 
 
-	input_layer  #(
+	wire [7:0] output_layer_1_data;
+	wire [9:0] out_fifo_1_dcount;	
+	wire   	   out_fifo_1_rd_en;	
 
-        .C_S_AXI_ID_WIDTH(3),
-        .C_S_AXI_ADDR_WIDTH(32),
-        .C_S_AXI_DATA_WIDTH(64),
-        .C_S_AXI_BURST_LEN(8),
-        .STREAM_DATA_WIDTH(72)
+	output_layer# (
+
+            .C_S_AXI_ID_WIDTH             				(3),
+            .C_S_AXI_ADDR_WIDTH           				(32),
+            .C_S_AXI_DATA_WIDTH           				(64),
+            .C_S_AXI_BURST_LEN            				(8),
+            .STREAM_DATA_WIDTH            				(8)
              
-    ) input_layer_inst (
-	// parameters from axi_lite
-	        .Start(Start),
-			.axi_address(32'hFF0),
-			.larger_block_en(0),
-			.allocated_space_per_row(16),
-			.stride2en(0),
-			.burst_per_row(1),
-			.read_burst_len(1),
-			.no_of_input_layers(16),
-			.input_layer_row_size(13),
-			.input_layer_col_size(13),
-			.in_layer_ddr3_data_rdy(1'b1),
-			.input_layer_1_data(data_o),
-			.input_layer_1_valid(valid_o),
-			.input_layer_1_rdy(w_input_layer_1_rdy), 
-			.input_layer_1_id(), 
+    ) output_layer_inst(
+
+			.Start 										(Start),
+			.axi_address 								(32'h1000),
+			.no_of_input_layers 						(5),
+			.input_layer_row_size 						(55),
+			.input_layer_col_size 						(55),
+			.larger_block_en 							(1'b0),
+			.allocated_space_per_row 					(64),
+			.burst_per_row 								(1),
+			.read_burst_len 							(7),
 
 
-			.clk(clk),				
-    		.reset_n(reset_n),
-			.M_axi_awid(w_AXI_AWID), 	
-			.M_axi_awaddr(w_AXI_AWADDR),	
-			.M_axi_awlen(w_AXI_AWLEN),	
-			.M_axi_awsize(w_AXI_AWSIZE), 	
-			.M_axi_awburst(w_AXI_AWBURST),   
-			.M_axi_awlock(w_AXI_AWLOCK),	
-			.M_axi_awcache(w_AXI_AWCACHE), 	
-			.M_axi_awprot(w_AXI_AWPROT), 	
-    		.M_axi_awqos(w_AXI_AWQOS), 	
-			.M_axi_awvalid(w_AXI_AWVALID),	
-			.M_axi_awready(w_AXI_AWREADY), 	
+			.output_layer_1_data						(output_layer_1_data),
+			.out_fifo_1_dcount							(out_fifo_1_dcount),
+			.out_fifo_1_rd_en							(out_fifo_1_rd_en), 
 
-	// AXI Write Data Control Signals
-			.M_axi_wdata(w_AXI_WDATA),		
-			.M_axi_wstrb(w_AXI_WSTRB),		
-			.M_axi_wlast(w_AXI_WLAST),		
-			.M_axi_wvalid(w_AXI_WVALID),		
-			.M_axi_wready(w_AXI_WREADY),		
 
-	// AXI Response Control Signals
-			.M_axi_bid(w_AXI_BID), 			
-			.M_axi_bresp(w_AXI_BRESP),		
-			.M_axi_bvalid(w_AXI_BVALID), 		
-			.M_axi_bready(w_AXI_BREADY),		
+	
+			.clk 										(clk),				
+   			.reset_n 									(reset_n),
+			
+			.M_axi_awid 								(w_AXI_AWID), 	
+			.M_axi_awaddr 								(w_AXI_AWADDR),	
+			.M_axi_awlen 								(w_AXI_AWLEN),	
+			.M_axi_awsize 								(w_AXI_AWSIZE), 	
+			.M_axi_awburst 								(w_AXI_AWBURST),   
+			.M_axi_awlock 								(w_AXI_AWLOCK),	
+			.M_axi_awcache 								(w_AXI_AWCACHE), 								 	
+			.M_axi_awprot 								(w_AXI_AWPROT), 	
+   			.M_axi_awqos 								(w_AXI_AWQOS), 	
+			.M_axi_awvalid 								(w_AXI_AWVALID),	
+			.M_axi_awready 								(w_AXI_AWREADY), 	
 
-	// AXI Read Address Control Signals
-			.M_axi_arid(w_AXI_ARID), 		
-			.M_axi_araddr(w_AXI_ARADDR), 		
-			.M_axi_arlen(w_AXI_ARLEN), 		
-			.M_axi_arsize(w_AXI_ARSIZE), 		
-			.M_axi_arburst(w_AXI_ARBURST), 		
-			.M_axi_arlock(w_AXI_ARLOCK), 		
-			.M_axi_arcache(w_AXI_ARCACHE), 		
-			.M_axi_arprot(w_AXI_ARPROT), 		
-			.M_axi_arqos(w_AXI_ARQOS),		
-			.M_axi_arvalid(w_AXI_ARVALID),		
-			.M_axi_arready(w_AXI_ARREADY),		
+			
+			.M_axi_wdata 								(w_AXI_WDATA),		
+			.M_axi_wstrb 								(w_AXI_WSTRB),		
+			.M_axi_wlast 								(w_AXI_WVALID),		
+			.M_axi_wvalid   							(w_AXI_WLAST),		
+			.M_axi_wready								(w_AXI_WREADY),
 
-	// AXI Read Data Control Signals
-			.M_axi_rid(w_AXI_RID), 			
-			.M_axi_rdata(w_AXI_RDATA),		
-			.M_axi_rresp(w_AXI_RRESP),		
-    		.M_axi_rlast(w_AXI_RLAST),		
-			.M_axi_rvalid(w_AXI_RVALID),		
-			.M_axi_rready(w_AXI_RREADY)		
+			.M_axi_bid									(w_AXI_BID),
+			.M_axi_bresp								(w_AXI_BRESP),
+			.M_axi_bvalid								(w_AXI_BVALID),
+			.M_axi_bready								(w_AXI_BREADY)					
 	);
+
+
+
+    reg [7:0] r_fifo_din;
+    reg 	  r_fifo_wr_en;
+
+	process_fifo  process_fifo_inst(
+
+  			.clk										(clk),
+  			.srst										(~reset_n),
+  			.din										(r_fifo_din),
+  			.wr_en										(r_fifo_wr_en),
+  			.rd_en										(out_fifo_1_rd_en),
+  			.dout										(output_layer_1_data),
+  			.full										(),
+  			.empty										(),
+  			.data_count									(out_fifo_1_dcount)
+		);
 	
 
     always #5 clk = ~clk;
 
-    integer f;
+    integer f, scan_inputs;
     initial begin
-    	f = $fopen("/home/vasan/altera/AP85/output_files/output.txt","w");
+    	// f = $fopen("/home/vasan/altera/AP85/output_files/output.txt","w");
+    	f = $fopen("/home/vasan/altera/xilinx/win3x3/win3x3/win3x3.srcs/sources_1/ip/layers.txt","r");
+    	
+
         Start = 0;
     	clk = 0;
     	reset_n = 0;
+    	r_fifo_din = 0;
+    	r_fifo_wr_en = 0;
+
 
     	#500
     	reset_n = 1;
@@ -293,11 +300,27 @@ module top_sim();
     	end
     end
 
-    always @(posedge clk) begin : proc_fwrite
-    	if(reset_n & valid_o & w_input_layer_1_rdy) begin
-    		$fwrite(f,"%d, %d, %d, %d, %d, %d, %d, %d, %d,\n", win_0_0, win_1_0, win_2_0, win_0_1, win_1_1, win_2_1, win_0_2, win_1_2, win_2_2);
-    	end 
+    always @(posedge clk) begin : proc_
+    	if(~reset_n) begin
+    		r_fifo_din <= 0;
+			r_fifo_wr_en <= 0;
+    	end else if(r_rand_number == 7 && out_fifo_1_dcount < 500) begin
+    		scan_inputs = $fscanf(f, "%d", r_fifo_din); 
+    		// r_fifo_din <= $random%255;
+    		r_fifo_wr_en <= 1;
+    	end else begin
+    		r_fifo_din <= 0;
+			r_fifo_wr_en <= 0;
+    	end
     end
+
+    // always @(posedge clk) begin : proc_fwrite
+    // 	if(reset_n & valid_o & w_input_layer_1_rdy) begin
+    // 		$fwrite(f,"%d, %d, %d, %d, %d, %d, %d, %d, %d,\n", win_0_0, win_1_0, win_2_0, win_0_1, win_1_1, win_2_1, win_0_2, win_1_2, win_2_2);
+    // 	end 
+    // end
+
+
 
 
 
