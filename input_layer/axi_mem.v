@@ -52,7 +52,7 @@
 		output  wire 			[15:0]									allocated_space_per_row,
 		output  wire 													stride2en,
 		output  wire 			[7:0]									burst_per_row,
-		output  wire 													read_burst_len,
+		output  wire 			[3:0]									read_burst_len,
 
 		// parameters for kernel loader
 
@@ -649,17 +649,11 @@
 	// endgenerate
 	//Output register or memory read data
 
-	always @( mem_data_out, axi_rvalid)
+	always @(posedge S_AXI_ACLK)
 	begin
-	  if (axi_rvalid) 
-	    begin
 	      // Read address mux
 	      axi_rdata <= stream_in; //mem_data_out[0];
-	    end   
-	  else
-	    begin
-	      axi_rdata <= 32'h00000000;
-	    end       
+  
 	end    
 
 	// Add user logic here
@@ -805,8 +799,8 @@
 				r_burst_per_row <= 0;
 				r_read_burst_len <= 0;
 			end else if(mem_wren && mem_address == 4)begin
-				r_larger_block_en <= S_AXI_WDATA[0:0];
-				r_stride2en <= S_AXI_WDATA[1:1];
+				r_larger_block_en <= S_AXI_WDATA[24:24];
+				r_stride2en <= S_AXI_WDATA[25:25];
 				r_allocated_space_per_row <= S_AXI_WDATA[15:0];
 				r_burst_per_row <= S_AXI_WDATA[23:16];
 				r_read_burst_len <= S_AXI_WDATA[31:28];
