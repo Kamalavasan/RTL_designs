@@ -255,7 +255,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_out_fifo_1_rd_en
-		if(~reset_n || fifo_rd_en_delay <= 2 || w_fifo_col_complete) begin
+		if(~reset_n || fifo_rd_en_delay <= 2 || w_fifo_col_complete | r_fifo_layer_complete) begin
 			r_out_fifo_1_rd_en <= 0;
 		end else if(r_pull_from_fifo && out_fifo_1_dcount >= 2)begin
 			r_out_fifo_1_rd_en <= 1;

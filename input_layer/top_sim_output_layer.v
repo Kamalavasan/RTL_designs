@@ -296,7 +296,7 @@ module top_sim();
     	if(~reset_n) begin
     		r_rand_number <= 0;
     	end else begin
-    		r_rand_number <= $random%8;
+    		r_rand_number <= $random%2;
     	end
     end
 
@@ -304,7 +304,7 @@ module top_sim();
     	if(~reset_n) begin
     		r_fifo_din <= 0;
 			r_fifo_wr_en <= 0;
-    	end else if(r_rand_number == 7 && out_fifo_1_dcount < 500) begin
+    	end else if(r_rand_number == 1 && out_fifo_1_dcount < 500) begin
     		scan_inputs = $fscanf(f, "%d", r_fifo_din); 
     		// r_fifo_din <= $random%255;
     		r_fifo_wr_en <= 1;
