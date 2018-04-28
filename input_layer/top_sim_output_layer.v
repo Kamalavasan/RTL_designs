@@ -195,7 +195,7 @@ module top_sim();
 			.larger_block_en 							(1'b0),
 			.allocated_space_per_row 					(64),
 			.burst_per_row 								(1),
-			.read_burst_len 							(7),
+			.write_burst_len 							(6),
 
 
 			.output_layer_1_data						(output_layer_1_data),
@@ -222,8 +222,8 @@ module top_sim();
 			
 			.M_axi_wdata 								(w_AXI_WDATA),		
 			.M_axi_wstrb 								(w_AXI_WSTRB),		
-			.M_axi_wlast 								(w_AXI_WVALID),		
-			.M_axi_wvalid   							(w_AXI_WLAST),		
+			.M_axi_wlast 								(w_AXI_WLAST),		
+			.M_axi_wvalid   							(w_AXI_WVALID),		
 			.M_axi_wready								(w_AXI_WREADY),
 
 			.M_axi_bid									(w_AXI_BID),

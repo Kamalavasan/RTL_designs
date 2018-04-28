@@ -16,7 +16,7 @@ module output_layer# (
 	input 												larger_block_en,
 	input 	[9:0] 										allocated_space_per_row,
 	input 	[7:0] 										burst_per_row,
-	input 	[3:0] 										read_burst_len,
+	input 	[3:0] 										write_burst_len,
 
 
 	// streaming data
@@ -63,25 +63,19 @@ module output_layer# (
 // axi settings
 	// Write Address Control Signals
 	assign M_axi_awid = 0;
-	assign M_axi_awlen = 8'h4;
+	assign M_axi_awlen = write_burst_len;
 	assign M_axi_awsize = 3;
 	assign M_axi_awburst = 1;
 	assign M_axi_awlock = 0;
 	assign M_axi_awcache = 4'b0011;
 	assign M_axi_awprot = 0;
 	assign M_axi_awqos = 0;
+	assign M_axi_wstrb = 8'hff;
 
-	// Read Address Control Signals
 
 
-	// tying write port to ground
-	assign M_axi_awaddr = 0;
-	assign M_axi_awvalid = 0;
+	
 
-	assign M_axi_wdata  = 0;
-	assign M_axi_wstrb = 0;
-	assign M_axi_wlast = 0;
-	assign M_axi_wvalid  = 0;
 
 //---------------------------------------------------------------------------------
 //---------------------------Implementation----------------------------------------
@@ -137,6 +131,17 @@ module output_layer# (
 	wire cmp_input_layer_id = (r_input_layer_id_fifo - r_input_layer_id_axi <= 1) && (r_row_id_fifo == r_row_id_axi);
 	wire cmp_row_id = (r_input_layer_id_axi == no_of_input_layers -1 ) && (r_row_id_fifo - r_row_id_axi <= 1) && (r_input_layer_id_fifo < 1);
 	wire w_fetch_from_fifo = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
+
+	wire data_in_blk_ram = ((r_input_layer_id_axi < r_input_layer_id_fifo) && (r_row_id_axi == r_row_id_fifo)) || (r_row_id_axi < r_row_id_fifo);
+	reg r_data_in_blk_ram;
+	always @(posedge clk) begin : proc_r_data_in_blk_ram
+		if(~reset_n) begin
+			r_data_in_blk_ram <= 0;
+		end else begin
+			r_data_in_blk_ram <= data_in_blk_ram;
+		end
+	end
+
 
 
 	reg r_pull_from_fifo;
@@ -351,7 +356,7 @@ module output_layer# (
 	end
 
 	wire [7:0] w_blk_addra = {r_blk_write_offset, r_addra[5:0]};
-
+	wire [7:0] w_addrb;
 	// creating a dual block ram instance
 	dual_buffer dual_buffer_inst_0
   (
@@ -362,8 +367,8 @@ module output_layer# (
 	    .dina(r_dina),
 	    .clkb(clk),
 	    .enb(1'b1), 
-	    .addrb(w_addrb2), 
-	    .doutb(dual_buffer_inst_doutb2) 
+	    .addrb(w_addrb), 
+	    .doutb(M_axi_wdata) 
   );
  
 
@@ -373,26 +378,12 @@ module output_layer# (
 //------------------- udating axi related input layer , row & col ID ------------------------
 //-------------------------------------------------------------------------------------------
 
-
- 	reg [7:0] r_burst_counter;
- 	wire burst_done = M_axi_wready & M_axi_wvalid & M_axi_wlast;
- 	always @(posedge clk) begin : proc_r_burst_counter
- 		if(~reset_n | Start) begin
- 			r_burst_counter <= 0;
- 		end else if(burst_done && r_burst_counter >= burst_per_row - 1 ) begin
- 			r_burst_counter <= 0;
- 		end else if(burst_done) begin
- 			r_burst_counter <= r_burst_counter + 1;
- 		end
- 	end
-
-
  	
  	always @(posedge clk) begin : proc_r_axi_row_write_complete
  		if(~reset_n | Start) begin
  			r_axi_row_write_complete <= 0;
  		end else begin
- 			r_axi_row_write_complete <= (burst_done && r_burst_counter >= burst_per_row - 1) ? 1 : 0;
+ 			r_axi_row_write_complete <= row_finished;
  		end
  	end
 
@@ -426,24 +417,112 @@ module output_layer# (
  	always @(posedge clk) begin : proc_r_addrb
  		if(~reset_n | Start | r_axi_row_write_complete) begin
  			r_addrb <= 0;
- 		end else if(M_axi_wvalid & M_axi_wready) begin
+ 		end else if(r_axi_write_FSM <= 4'b0010 && M_axi_wready) begin
  			r_addrb <= r_addrb + 1;
  		end
  	end
+ 	assign w_addrb = {r_blk_read_offset, r_addrb};
+
+ 	reg r_M_axi_wvalid_0;
+ 	reg r_M_axi_wvalid_1;
+
+ 	always @(posedge clk) begin : proc_r_M_axi_wvalid_1
+ 		if(~reset_n || Start || r_axi_row_write_complete || burst_done) begin
+ 			r_M_axi_wvalid_0 <= 0;
+ 			r_M_axi_wvalid_1 <= 0;
+ 		end else begin
+ 			r_M_axi_wvalid_0 <= (r_axi_write_FSM == 4'b0010 && M_axi_wready) ? 1 : 0;
+ 			r_M_axi_wvalid_1 <= r_M_axi_wvalid_0;
+ 		end
+ 	end
+ 	assign M_axi_wvalid = r_M_axi_wvalid_1;
 
 //********************************************************************************
 //********** AXI Write **********************************************************
 //********************************************************************************
 
+
+
+
+	//-----------------------------------------------------------------------------
+	//-----------------------Address Generation------------------------------------
+	//-----------------------------------------------------------------------------
+
+	reg [15:0] r_row_base_address_counter;
+	reg [15:0] r_row_current_address_counter;
+	reg [31:0] r_next_axi_address;
+	//reg [7:0] r_burst_counter;
+
+	always @(posedge clk) begin : proc_r_row_base_address_counter
+		if(~reset_n || Start) begin
+			r_row_base_address_counter <= 0;
+		end else if ((r_input_layer_id_axi >= no_of_input_layers -1) && row_finished) begin
+			r_row_base_address_counter <= r_row_base_address_counter + allocated_space_per_row;
+		end
+	end
+
+	always @(posedge clk) begin : proc_r_row_current_address_counter
+		if(~reset_n || Start) begin
+			r_row_current_address_counter <= 0;
+		end else if(r_row_write_FSM == 4'b0000) begin
+			r_row_current_address_counter <= r_row_base_address_counter;
+		end else if(M_axi_wvalid & M_axi_wready) begin
+			r_row_current_address_counter <= r_row_current_address_counter + 8;
+		end
+	end
+
+	always @(posedge clk) begin : proc_r_next_axi_address_offset
+		if(~reset_n) begin
+			r_next_axi_address <= 0;
+		end else if(larger_block_en) begin
+			r_next_axi_address <= {r_input_layer_id_axi, 16'b0} + r_row_current_address_counter + axi_address;
+		end else begin
+			r_next_axi_address <= {r_input_layer_id_axi, 12'b0} + r_row_current_address_counter + axi_address;
+		end
+	end
+	assign M_axi_awaddr = r_next_axi_address;
+
+	wire burst_done = M_axi_wvalid & M_axi_wready & M_axi_wlast;
+	wire row_finished = ((r_burst_counter == burst_per_row -1) && burst_done)? 1 : 0;
+
+	reg [7:0] r_burst_counter;
+	always @(posedge clk) begin : proc_r_burst_counter
+		if(~reset_n || Start || r_row_write_FSM == 4'b0000 || row_finished) begin
+			r_burst_counter <= 0;
+		end else if(burst_done)begin
+			r_burst_counter <= r_burst_counter + 1;
+		end
+	end
+
+	reg[3:0] r_row_write_FSM;
 	reg[3:0] r_axi_write_FSM;
+
+	always @(posedge clk) begin : proc_r_row_write_FSM
+		if(~reset_n | Start) begin
+			r_row_write_FSM <= 0;
+		end else begin
+			case(r_row_write_FSM)
+				4'b0000 : if(r_data_in_blk_ram) r_row_write_FSM <= 4'b0001;
+				4'b0001 : if(row_finished) r_row_write_FSM <= 4'b0010;
+				4'b0010 : r_row_write_FSM <= 4'b0011;
+				4'b0011 : r_row_write_FSM <= 4'b0100;
+				default : r_row_write_FSM <= 4'b0000;
+			endcase // r_row_write_FSM
+		end
+	end
+
+	//r_data_in_blk_ram
     always@(posedge clk) begin
-        if(~reset_n || Start) begin
+        if(~reset_n || Start || r_row_write_FSM != 4'b0001) begin
             r_axi_write_FSM <= 0;
         end else begin 
-            case(r_axi_write_FSM) 
-                4'b0000 : if(M_axi_awvalid & M_axi_awready)    r_axi_write_FSM <= 4'b0001;
-                4'b0001 : if(M_axi_wvalid & M_axi_wready & M_axi_wlast) r_axi_write_FSM<= 4'b0010;
-                4'b0010 : if(r_M_axi_bready & M_axi_bvalid) r_axi_write_FSM<= 4'b0000;
+            case(r_axi_write_FSM)
+            	4'b0000 : r_axi_write_FSM<= 4'b0001; 
+                4'b0001 : if(M_axi_awvalid & M_axi_awready)    r_axi_write_FSM <= 4'b0010;
+                4'b0010 : if(M_axi_wvalid & M_axi_wready & M_axi_wlast) r_axi_write_FSM<= 4'b0011;
+                4'b0011 : r_axi_write_FSM<= 4'b0000;
+                default : r_axi_write_FSM<= 4'b0000;
+                //4'b0010 : if(r_M_axi_bready & M_axi_bvalid) r_axi_write_FSM<= 4'b0000;
             endcase
         end
     end
@@ -451,28 +530,15 @@ module output_layer# (
 	// Valid for write address
 	reg r_M_axi_awvalid;
 	always @(posedge clk) begin
-		if(   ~reset_n || Start) 
+		if( ~reset_n || Start) begin
 			r_M_axi_awvalid <= 0;
-		else if(r_M_axi_awvalid && M_axi_awready)
+		end else if((r_M_axi_awvalid && M_axi_awready) || r_axi_write_FSM  != 4'b0001) begin
 		    r_M_axi_awvalid <= 0;
-	    else if(~r_M_axi_awvalid && r_axi_write_FSM == 4'b0000) 
+	    end else if(~r_M_axi_awvalid && r_axi_write_FSM == 4'b0001) begin
             r_M_axi_awvalid <= 1;
+        end
 	end
 	assign M_axi_awvalid = r_M_axi_awvalid;
-
-
-	// Valid for write data
-	reg r_M_axi_wvalid;
-	always @(posedge clk) begin
-		if(~reset_n | Start) 
-			r_M_axi_wvalid <= 0;
-		else if (r_M_axi_wlast && r_M_axi_wvalid && M_axi_wready)
-		    r_M_axi_wvalid <= 0;
-		else  if(r_axi_write_FSM == 4'b0001)
-            r_M_axi_wvalid <= 1;
-	end
-	assign M_axi_wvalid = r_M_axi_wvalid;
-
 
 	// valid for response signal
 	reg r_M_axi_bready;
@@ -489,15 +555,14 @@ module output_layer# (
 	always @(posedge clk) begin
         if(~reset_n || (M_axi_wlast && M_axi_wvalid && M_axi_wready) || Start) begin
             r_M_w_burst_count <= 0;
-        end
-        else if(M_axi_wvalid && M_axi_wready)begin
+        end else if(M_axi_wvalid && M_axi_wready)begin
             r_M_w_burst_count <= r_M_w_burst_count + 1;
         end
     end
 
     reg r_M_axi_wlast;
     always @(posedge clk) begin
-	    if(~reset_n | Start)
+	    if(~reset_n || Start || (r_M_axi_wlast && M_axi_wvalid && M_axi_wready))
 	        r_M_axi_wlast <= 0;
 	    else if((r_M_w_burst_count == M_axi_awlen -1) && M_axi_wvalid && M_axi_wready)
 	        r_M_axi_wlast <= 1;
