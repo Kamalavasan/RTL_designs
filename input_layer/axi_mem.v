@@ -34,6 +34,8 @@
 
 		output wire expand_en,
 
+		output wire in_layer_ddr3_data_rdy,
+
 		output wire [15:0] No_of_input_layers,
 
 		output wire [15:0] No_of_rows,
@@ -46,6 +48,11 @@
 
 		// input layer specific parameter
 		output  wire 			[31:0]									input_layer_axi_start_addr,
+		output  wire 													larger_block_en,
+		output  wire 			[15:0]									allocated_space_per_row,
+		output  wire 													stride2en,
+		output  wire 			[7:0]									burst_per_row,
+		output  wire 													read_burst_len,
 
 		// parameters for kernel loader
 
@@ -73,7 +80,7 @@
 
 		// Debug interface
 		input   wire            [31:0] 									stream_in,
-		output   wire                                            stream_in_rd_en,
+		output   wire                                            		stream_in_rd_en,
 		input 	wire            [7:0]    								stream_in_count,
 
 		// User ports ends
@@ -647,7 +654,7 @@
 	  if (axi_rvalid) 
 	    begin
 	      // Read address mux
-	      axi_rdata <= mem_data_out[0];
+	      axi_rdata <= stream_in; //mem_data_out[0];
 	    end   
 	  else
 	    begin
@@ -665,10 +672,11 @@
 	// 	  ADDR                   PARAMETER
 
 			// common paprameters and input layer
-	// 0x00000000 ------- 		 (byte0[0] == Start processing), (byte0[1] = max_pool_en), ((byte0[2] = expand_en), (byte1 = layer_ID) , (byte2, byte3 = No_of_input_layers)
+	// 0x00000000 ------- 		 (byte0[0] == Start processing), (byte0[1] = max_pool_en), ((byte0[2] = expand_en), ((byte0[3] = in_layer_ddr3_data_rdy), (byte1 = layer_ID) , (byte2, byte3 = No_of_input_layers)
 	// 0x00000004 -------        (byte1, byte0 = No_of_rows), (byte3, byte2 = no_of_cols)
 	// 0x00000008 -------        (byte0, byte1 == No_of_expand_layers), (byte2, byte3 = No_of_squeeze_layers)
 	// 0x0000000c -------        start of input layer axi address
+	// 0x00000010 -------        (byte01, byte0 = allocated_space_per_row), (byte2 = burst_per_row),  (byte3[7:4] = read_burst_len, byte3[1:0] = stride2en, larger_block_en)
 	 
 
 			//kernel loader parameter
@@ -698,6 +706,7 @@
 		reg [7:0] r_layer_ID;
 		reg r_max_pool_en;
 		reg r_expand_en;
+		reg r_in_layer_ddr3_data_rdy;
 		reg [15:0] r_No_of_input_layers;
 		reg [15:0] r_No_of_input_layer_rows;
 		reg [15:0] r_no_of_input_layer_cols;
@@ -706,7 +715,13 @@
 		reg [15:0] r_No_of_expand_layers;
 		reg [15:0] r_No_of_squeeze_layers;
 
+	// input layer specific parameters
 		reg [31:0] r_input_layer_axi_address;
+		reg r_larger_block_en;
+		reg r_stride2en;
+		reg [15:0] r_allocated_space_per_row;
+		reg [7:0] r_burst_per_row;
+		reg [3:0] r_read_burst_len;
 
 	// parameters for kerel loader
 		reg [31:0] r_kernel0_settings;
@@ -736,12 +751,14 @@
 				r_max_pool_en <= 0;
 				r_expand_en <= 0;
 				r_No_of_input_layers <= 0;
+				r_in_layer_ddr3_data_rdy <= 0;
 			end else if(mem_wren && mem_address == 0)begin
 				r_Start <= S_AXI_WDATA[0:0];
 				r_layer_ID <= S_AXI_WDATA[15:8];
 				r_max_pool_en <= S_AXI_WDATA[1:1];
 				r_expand_en <= S_AXI_WDATA[2:2];
 				r_No_of_input_layers <= S_AXI_WDATA[31:16];
+				r_in_layer_ddr3_data_rdy <= S_AXI_WDATA[3:3];
 			end else begin
 				r_Start <= 0;
 				r_max_pool_en <= 0;
@@ -769,11 +786,30 @@
 			end
 		end
 
+
+		// input layer parameters
 		always @(posedge S_AXI_ACLK) begin : proc_r_input_layer_axi_address
 			if(~S_AXI_ARESETN) begin
 				r_input_layer_axi_address <= 0;
 			end else if(mem_wren && mem_address == 3) begin
 				r_input_layer_axi_address <= S_AXI_WDATA;
+			end
+		end
+
+
+		always @(posedge S_AXI_ACLK) begin : proc_mem_address_4
+			if(~S_AXI_ARESETN) begin
+				r_larger_block_en <= 0;
+				r_stride2en <= 0;
+				r_allocated_space_per_row <= 0;
+				r_burst_per_row <= 0;
+				r_read_burst_len <= 0;
+			end else if(mem_wren && mem_address == 4)begin
+				r_larger_block_en <= S_AXI_WDATA[0:0];
+				r_stride2en <= S_AXI_WDATA[1:1];
+				r_allocated_space_per_row <= S_AXI_WDATA[15:0];
+				r_burst_per_row <= S_AXI_WDATA[23:16];
+				r_read_burst_len <= S_AXI_WDATA[31:28];
 			end
 		end
 
@@ -889,9 +925,15 @@
 		assign No_of_input_layers = r_No_of_input_layers;
 		assign No_of_rows = r_No_of_input_layer_rows;
 		assign no_of_cols = r_no_of_input_layer_cols;
+		assign in_layer_ddr3_data_rdy = r_in_layer_ddr3_data_rdy;
 
 		// specific parameter - input layer
 		assign input_layer_axi_start_addr = r_input_layer_axi_address;
+		assign larger_block_en = r_larger_block_en;
+		assign allocated_space_per_row = r_allocated_space_per_row;
+		assign stride2en = r_stride2en;
+		assign burst_per_row = r_burst_per_row;
+		assign read_burst_len = r_read_burst_len;
 
 		// specific parameter - processing block
 		assign No_of_expand_layers = r_No_of_expand_layers;

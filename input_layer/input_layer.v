@@ -521,45 +521,76 @@ module input_layer# (
 			wea_2 <= (r_fetch_rows_FSM == 4'b0011)? blk_ram_write_enable : 0;
 		end
 	end
-	
+
+
 	dual_buffer dual_buffer_inst_0
-  (
-	    .clka(clk),
-	    .ena(1'b1), 
-	    .wea(wea_0), 
-	    .addra(w_blk_ram_wr_addr0), 
-	    .dina(r_M_axi_rdata),
-	    .clkb(clk),
-	    .enb(1'b1), 
-	    .addrb(w_addrb0), 
-	    .doutb(dual_buffer_inst_doutb0) 
-  );
+	(
+		.clock(clk),
+		.data(r_M_axi_rdata),
+		.rdaddress(w_addrb0),
+		.wraddress(w_blk_ram_wr_addr0),
+		.wren(wea_0),
+		.q(dual_buffer_inst_doutb0)
+	);
 
-  dual_buffer dual_buffer_inst_1
-  (
-	    .clka(clk),
-	    .ena(1'b1), 
-	    .wea(wea_1), 
-	    .addra(w_blk_ram_wr_addr1), 
-	    .dina(r_M_axi_rdata),
-	    .clkb(clk),
-	    .enb(1'b1), 
-	    .addrb(w_addrb1), 
-	    .doutb(dual_buffer_inst_doutb1) 
-  );
+	dual_buffer dual_buffer_inst_1
+	(
+		.clock(clk),
+		.data(r_M_axi_rdata),
+		.rdaddress(w_addrb1),
+		.wraddress(w_blk_ram_wr_addr1),
+		.wren(wea_1),
+		.q(dual_buffer_inst_doutb1)
+	);
 
-  dual_buffer dual_buffer_inst_2
-  (
-	    .clka(clk),
-	    .ena(1'b1), 
-	    .wea(wea_2), 
-	    .addra(w_blk_ram_wr_addr2), 
-	    .dina(r_M_axi_rdata),
-	    .clkb(clk),
-	    .enb(1'b1), 
-	    .addrb(w_addrb2), 
-	    .doutb(dual_buffer_inst_doutb2) 
-  );
+	dual_buffer dual_buffer_inst_2
+	(
+		.clock(clk),
+		.data(r_M_axi_rdata),
+		.rdaddress(w_addrb2),
+		.wraddress(w_blk_ram_wr_addr2),
+		.wren(wea_2),
+		.q(dual_buffer_inst_doutb2)
+	);
+	
+	// dual_buffer dual_buffer_inst_0
+ //  (
+	//     .clka(clk),
+	//     .ena(1'b1), 
+	//     .wea(wea_0), 
+	//     .addra(w_blk_ram_wr_addr0), 
+	//     .dina(r_M_axi_rdata),
+	//     .clkb(clk),
+	//     .enb(1'b1), 
+	//     .addrb(w_addrb0), 
+	//     .doutb(dual_buffer_inst_doutb0) 
+ //  );
+
+ //  dual_buffer dual_buffer_inst_1
+ //  (
+	//     .clka(clk),
+	//     .ena(1'b1), 
+	//     .wea(wea_1), 
+	//     .addra(w_blk_ram_wr_addr1), 
+	//     .dina(r_M_axi_rdata),
+	//     .clkb(clk),
+	//     .enb(1'b1), 
+	//     .addrb(w_addrb1), 
+	//     .doutb(dual_buffer_inst_doutb1) 
+ //  );
+
+ //  dual_buffer dual_buffer_inst_2
+ //  (
+	//     .clka(clk),
+	//     .ena(1'b1), 
+	//     .wea(wea_2), 
+	//     .addra(w_blk_ram_wr_addr2), 
+	//     .dina(r_M_axi_rdata),
+	//     .clkb(clk),
+	//     .enb(1'b1), 
+	//     .addrb(w_addrb2), 
+	//     .doutb(dual_buffer_inst_doutb2) 
+ //  );
 	//--------------------------------------------------------------------------------------------
 	//----------- logic for reading and providing required data-----------------------------------
 	//--------------------------------------------------------------------------------------------
