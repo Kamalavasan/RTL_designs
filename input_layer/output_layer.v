@@ -163,6 +163,15 @@ module output_layer# (
 		end
 	end
 
+	reg r_8byte_row_vaid;
+	always @(posedge clk) begin : proc_r_8byte_row_vaid
+		if(~reset_n) begin
+			r_8byte_row_vaid <= 0;
+		end else if(Start)begin
+			r_8byte_row_vaid <= (output_layer_col_size[2:0] == 0 ? 1 : 0);
+		end
+	end
+
 
 
 //-------------------------------------------------------------------------------------------------
@@ -188,7 +197,7 @@ module output_layer# (
 			r_fifo_col_complete_p1 <= 0;
 			r_fifo_col_complete_p2 <= 0;
 		end else begin
-			r_fifo_col_complete <= w_fifo_col_complete;
+			r_fifo_col_complete <= w_fifo_col_complete ;
 			r_fifo_col_complete_p1 <= r_fifo_col_complete;
 			r_fifo_col_complete_p2 <= r_fifo_col_complete_p1;
 		end
@@ -330,7 +339,7 @@ module output_layer# (
 		if(~reset_n || Start) begin
 			r_wea <= 0;
 		end else begin
-			r_wea <= (r_FSM_row_former == 7 && r_out_fifo_1_rd_en_p1) || r_fifo_col_complete_p1 ? 1 : 0;
+			r_wea <= (r_FSM_row_former == 7 && r_out_fifo_1_rd_en_p1) || (r_fifo_col_complete_p1 && ~r_8byte_row_vaid) ? 1 : 0;
 		end
 	end
 
@@ -383,18 +392,18 @@ module output_layer# (
   wire [7:0] w_data_count;
 
   wire w_fifo_rd_en = M_axi_wvalid && M_axi_wready && ~r_hold_fifo_rd;
-  out_buffer out_buffer_inst
-  (
-    .clk 				(clk), 
-    .srst 				(~reset_n), 
-    .din 				(r_dina),
-    .wr_en 				(r_wea), 
-    .rd_en 				(w_fifo_rd_en), 
-    .dout 				(M_axi_wdata), 
-    .full 				(), 
-    .empty 				(), 
-    .data_count 		(w_data_count)	 
-  );
+  // out_buffer out_buffer_inst
+  // (
+  //   .clk 				(clk), 
+  //   .srst 				(~reset_n), 
+  //   .din 				(r_dina),
+  //   .wr_en 				(r_wea), 
+  //   .rd_en 				(w_fifo_rd_en), 
+  //   .dout 				(M_axi_wdata), 
+  //   .full 				(), 
+  //   .empty 				(), 
+  //   .data_count 		(w_data_count)	 
+  // );
 
  // altera
  //  	dual_buffer dual_buffer_inst_0
@@ -407,6 +416,17 @@ module output_layer# (
 	// 	.q(M_axi_wdata)
 	// );
  
+
+ out_buffer out_buffer_inst
+ 	(
+		.clock				(clk),
+		.data				(r_dina),
+		.rdreq				(w_fifo_rd_en),
+		.sclr				(~reset_n | Start),
+		.wrreq				(r_wea),
+		.q					(M_axi_wdata),
+		.usedw				(w_data_count)
+	);
 
 
 
@@ -478,7 +498,7 @@ module output_layer# (
  			r_M_axi_wvalid <= 1;
  		end else if(r_axi_write_FSM == 4'b0010 && w_data_count >= 2) begin
  			r_M_axi_wvalid <= 1;
- 		end else if(r_axi_write_FSM == 4'b0010 && w_data_count  == 1 && ~r_M_axi_wvalid) begin
+ 		end else if(r_axi_write_FSM == 4'b0010 && w_data_count  == 1 && ~w_fifo_rd_en) begin
  			r_M_axi_wvalid <= 1;
  		end  else begin
  			r_M_axi_wvalid <= 0;
