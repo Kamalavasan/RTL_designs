@@ -428,7 +428,7 @@ module output_layer# (
  	always @(posedge clk) begin : proc_r_addrb
  		if(~reset_n || Start || r_axi_row_write_complete) begin
  			r_addrb <= 0;
- 		end else if(r_axi_write_FSM <= 4'b0010 && M_axi_wready) begin
+ 		end else if(r_axi_write_FSM == 4'b0010 && M_axi_wready) begin
  			r_addrb <= r_addrb + 1;
  		end
  	end
@@ -438,7 +438,7 @@ module output_layer# (
  	reg r_M_axi_wvalid_1;
 
  	always @(posedge clk) begin : proc_r_M_axi_wvalid_1
- 		if(~reset_n || Start || r_axi_row_write_complete || burst_done) begin
+ 		if(~reset_n || Start || (r_axi_write_FSM == 4'b0010 && M_axi_wvalid && M_axi_wready && M_axi_wlast)) begin
  			r_M_axi_wvalid_0 <= 0;
  			r_M_axi_wvalid_1 <= 0;
  		end else begin
@@ -467,7 +467,7 @@ module output_layer# (
 	always @(posedge clk) begin : proc_r_row_base_address_counter
 		if(~reset_n || Start) begin
 			r_row_base_address_counter <= 0;
-		end else if ((r_input_layer_id_axi >= no_of_output_layers -1) && row_finished) begin
+		end else if ((r_input_layer_id_axi == no_of_output_layers -1) && row_finished) begin
 			r_row_base_address_counter <= r_row_base_address_counter + allocated_space_per_row;
 		end
 	end
@@ -493,7 +493,7 @@ module output_layer# (
 	end
 	assign M_axi_awaddr = r_next_axi_address;
 
-	wire burst_done = M_axi_wvalid & M_axi_wready & M_axi_wlast;
+	wire burst_done = (r_axi_write_FSM == 4'b0011) && r_M_axi_bready && M_axi_bvalid;
 	wire row_finished = ((r_burst_counter == burst_per_row -1) && burst_done)? 1 : 0;
 
 	reg [7:0] r_burst_counter;
@@ -531,9 +531,10 @@ module output_layer# (
             	4'b0000 : r_axi_write_FSM<= 4'b0001; 
                 4'b0001 : if(M_axi_awvalid & M_axi_awready)    r_axi_write_FSM <= 4'b0010;
                 4'b0010 : if(M_axi_wvalid & M_axi_wready & M_axi_wlast) r_axi_write_FSM<= 4'b0011;
-                4'b0011 : r_axi_write_FSM<= 4'b0000;
+                4'b0011 : if(r_M_axi_bready & M_axi_bvalid) r_axi_write_FSM<= 4'b0100;
+                4'b0100 : r_axi_write_FSM<= 4'b0000;
                 default : r_axi_write_FSM<= 4'b0000;
-                //4'b0010 : if(r_M_axi_bready & M_axi_bvalid) r_axi_write_FSM<= 4'b0000;
+                
             endcase
         end
     end
