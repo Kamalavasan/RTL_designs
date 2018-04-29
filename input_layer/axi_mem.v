@@ -77,6 +77,11 @@
 		output  wire 			[15:0] 									No_of_output_cols,
 		output  wire 			[31:0] 									output_layer_axi_address,
 
+		output  wire 			 										out_larger_block_en,  				
+		output  wire 			[15:0] 									out_allocated_space_per_row,  		
+		output  wire 			[7:0] 									out_burst_per_row,  				
+		output  wire 			[3:0] 									out_read_burst_len,  				
+
 
 		// Debug interface
 		input   wire            [31:0] 									stream_in,
@@ -670,7 +675,7 @@
 	// 0x00000014 -------        (byte1, byte0 = No_of_rows), (byte3, byte2 = no_of_cols)
 	// 0x00000008 -------        (byte0, byte1 == No_of_expand_layers), (byte2, byte3 = No_of_squeeze_layers)
 	// 0x0000000c -------        start of input layer axi address
-	// 0x00000010 -------        (byte01, byte0 = allocated_space_per_row), (byte2 = burst_per_row),  (byte3[7:4] = read_burst_len, byte3[1:0] = stride2en, larger_block_en)
+	// 0x00000010 -------        (byte01, byte0 = allocated_space_per_row), (byte2 = burst_per_row),  (byte3[7:4] = read_burst_len, byte3[25:24] = stride2en, larger_block_en)
 	 
 
 			//kernel loader parameter
@@ -691,6 +696,8 @@
 	// 0x00000080 -------        (byte0, byte1 = No of output layers ) 
 	// 0x00000084 -------        (byte0, byte1 = No_of_rows, byte2, byte3 = no_of_cols)
 	// 0x00000088 -------        start of output layer axi address
+	// 0x0000008c -------        (byte01, byte0 = out_allocated_space_per_row), (byte2 = out_burst_per_row),  (byte3[31:28] = write_burst_len, byte3[24:24] = larger_block_en)
+
 
 
 
@@ -735,6 +742,11 @@
 		reg [15:0] r_No_of_output_rows;
 		reg [15:0] r_No_of_output_cols;
 		reg [31:0] r_output_layer_axi_address;
+
+		reg r_out_larger_block_en;
+		reg [15:0] r_out_allocated_space_per_row;
+		reg [7:0] r_out_burst_per_row;
+		reg [3:0] r_out_read_burst_len;
 
 		// start signal
 		assign mem_wren = axi_wready && S_AXI_WVALID ;
@@ -899,6 +911,7 @@
 				r_No_of_output_cols <= S_AXI_WDATA[31:16];
 			end
 		end
+
 		always @(posedge S_AXI_ACLK) begin : proc_r_output_layer_axi_address
 			if(~S_AXI_ARESETN) begin
 				r_output_layer_axi_address <= 0;
@@ -906,7 +919,20 @@
 				r_output_layer_axi_address <= S_AXI_WDATA;
 			end
 		end
-		
+
+		always @(posedge S_AXI_ACLK) begin : proc_mem_address35
+			if(~S_AXI_ARESETN) begin
+				r_out_larger_block_en <= 0;
+				r_out_allocated_space_per_row <= 0;
+				r_out_burst_per_row <= 0;
+				r_out_read_burst_len <= 0;
+			end else if(mem_wren && mem_address == 35) begin
+				r_out_larger_block_en <= S_AXI_WDATA[24:24];
+				r_out_allocated_space_per_row <= S_AXI_WDATA[15:0];
+				r_out_burst_per_row <= S_AXI_WDATA[23:16];
+				r_out_read_burst_len <= S_AXI_WDATA[31:28];
+			end
+		end
 
 
 
@@ -953,6 +979,11 @@
 		assign No_of_output_rows = r_No_of_output_rows;
 		assign No_of_output_cols = r_No_of_output_cols;
 		assign output_layer_axi_address = r_output_layer_axi_address;
+
+		assign out_larger_block_en = r_out_larger_block_en;
+		assign out_allocated_space_per_row = r_out_allocated_space_per_row;
+		assign out_burst_per_row = r_out_burst_per_row;
+		assign out_read_burst_len = r_out_read_burst_len;
 
 
 

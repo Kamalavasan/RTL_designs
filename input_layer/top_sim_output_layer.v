@@ -189,9 +189,9 @@ module top_sim();
 
 			.Start 										(Start),
 			.axi_address 								(32'h1000),
-			.no_of_input_layers 						(5),
-			.input_layer_row_size 						(55),
-			.input_layer_col_size 						(55),
+			.no_of_output_layers 						(5),
+			.output_layer_row_size 						(55),
+			.output_layer_col_size 						(55),
 			.larger_block_en 							(1'b0),
 			.allocated_space_per_row 					(64),
 			.burst_per_row 								(1),

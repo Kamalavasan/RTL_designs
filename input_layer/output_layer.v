@@ -10,9 +10,9 @@ module output_layer# (
 	// parameters from axi_lite
 	input 												Start,
 	input 	[C_S_AXI_ADDR_WIDTH -1 : 0] 				axi_address,
-	input 	[9:0] 										no_of_input_layers,
-	input 	[9:0] 										input_layer_row_size,
-	input 	[9:0] 										input_layer_col_size,
+	input 	[9:0] 										no_of_output_layers,
+	input 	[9:0] 										output_layer_row_size,
+	input 	[9:0] 										output_layer_col_size,
 	input 												larger_block_en,
 	input 	[9:0] 										allocated_space_per_row,
 	input 	[7:0] 										burst_per_row,
@@ -129,13 +129,13 @@ module output_layer# (
 //-------------------- Condition to fetch from fifo------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 	wire cmp_input_layer_id = (r_input_layer_id_fifo - r_input_layer_id_axi <= 1) && (r_row_id_fifo == r_row_id_axi);
-	wire cmp_row_id = (r_input_layer_id_axi == no_of_input_layers -1 ) && (r_row_id_fifo - r_row_id_axi <= 1) && (r_input_layer_id_fifo < 1);
+	wire cmp_row_id = (r_input_layer_id_axi == no_of_output_layers -1 ) && (r_row_id_fifo - r_row_id_axi <= 1) && (r_input_layer_id_fifo < 1);
 	wire w_fetch_from_fifo = ( cmp_input_layer_id | cmp_row_id? 1 : 0);
 
 	wire data_in_blk_ram = ((r_input_layer_id_axi < r_input_layer_id_fifo) && (r_row_id_axi == r_row_id_fifo)) || (r_row_id_axi < r_row_id_fifo);
 	reg r_data_in_blk_ram;
 	always @(posedge clk) begin : proc_r_data_in_blk_ram
-		if(~reset_n) begin
+		if(~reset_n || Start) begin
 			r_data_in_blk_ram <= 0;
 		end else begin
 			r_data_in_blk_ram <= data_in_blk_ram;
@@ -146,7 +146,7 @@ module output_layer# (
 
 	reg r_pull_from_fifo;
 	always @(posedge clk) begin : proc_r_pull_from_fifo
-		if(~reset_n) begin
+		if(~reset_n || Start) begin
 			r_pull_from_fifo <= 0;
 		end else begin
 			r_pull_from_fifo <= w_fetch_from_fifo;
@@ -161,9 +161,9 @@ module output_layer# (
 //-------------------------------------------------------------------------------------------------
 
 	always @(posedge clk) begin : proc_r_fifo_col_almost_end
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_fifo_col_almost_end <= 0;
-		end else if(r_out_fifo_1_rd_en && r_col_id_fifo == input_layer_col_size-2) begin
+		end else if(r_out_fifo_1_rd_en && r_col_id_fifo == output_layer_col_size-2) begin
 			r_fifo_col_almost_end <= 1;
 		end else if(r_out_fifo_1_rd_en)begin
 			r_fifo_col_almost_end <= 0;
@@ -174,7 +174,7 @@ module output_layer# (
 
 	// registering w_fifo_col_complete
 	always @(posedge clk) begin : proc_r_fifo_col_complete
-		if(~reset_n) begin
+		if(~reset_n || Start) begin
 			r_fifo_col_complete <= 0;
 			r_fifo_col_complete_p1 <= 0;
 			r_fifo_col_complete_p2 <= 0;
@@ -186,7 +186,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_col_id_fifo
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_col_id_fifo <= 0;
 		end else if(w_fifo_col_complete)begin
 			r_col_id_fifo <= 0;
@@ -196,9 +196,9 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_input_layer_id_fifo
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_input_layer_id_fifo <= 0;
-		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_input_layers-1) begin
+		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_output_layers-1) begin
 			r_input_layer_id_fifo <= 0;
 		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end) begin
 			r_input_layer_id_fifo <= r_input_layer_id_fifo + 1;
@@ -206,9 +206,9 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_row_id_fifo
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_row_id_fifo <= 0;
-		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_input_layers-1)begin
+		end else if(r_out_fifo_1_rd_en && r_fifo_col_almost_end && r_input_layer_id_fifo >= no_of_output_layers-1)begin
 			r_row_id_fifo <= r_row_id_fifo + 1;
 		end
 	end
@@ -217,9 +217,9 @@ module output_layer# (
 
 	// logic for detecting layer complete 
 	always @(posedge clk) begin : proc_r_fifo_layer_complete
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_fifo_layer_complete <= 0;
-		end else if(r_row_id_fifo >= input_layer_row_size)begin
+		end else if(r_row_id_fifo >= output_layer_row_size)begin
 			r_fifo_layer_complete <= 1;
 		end else begin
 			r_fifo_layer_complete <= 0;
@@ -255,7 +255,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_out_fifo_1_rd_en
-		if(~reset_n || fifo_rd_en_delay <= 2 || w_fifo_col_complete | r_fifo_layer_complete) begin
+		if(~reset_n || fifo_rd_en_delay <= 2 || w_fifo_col_complete || r_fifo_layer_complete || Start) begin
 			r_out_fifo_1_rd_en <= 0;
 		end else if(r_pull_from_fifo && out_fifo_1_dcount >= 2)begin
 			r_out_fifo_1_rd_en <= 1;
@@ -267,7 +267,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_out_fifo_1_rd_en_p1
-		if(~reset_n) begin
+		if(~reset_n || Start) begin
 			r_out_fifo_1_rd_en_p1 <= 0;
 		end else begin
 			r_out_fifo_1_rd_en_p1 <= r_out_fifo_1_rd_en;
@@ -280,7 +280,7 @@ module output_layer# (
 //-------------- Forming a  8 byte ROW -------------------------------------------------------
 //--------------------------------------------------------------------------------------------
 	always @(posedge clk) begin : proc_r_FSM_row_former
-		if(~reset_n | Start | r_fifo_col_complete_p1) begin
+		if(~reset_n ||| Start ||| r_fifo_col_complete_p1) begin
 			r_FSM_row_former <= 0;
 		end else if(r_out_fifo_1_rd_en_p1 && r_FSM_row_former == 7)begin
 			r_FSM_row_former <= 0;
@@ -291,7 +291,7 @@ module output_layer# (
 
 	// latching fifo data to reg
 	always @(posedge clk) begin : proc_r_blk_row
-		if(~reset_n | Start | r_fifo_col_complete_p1) begin
+		if(~reset_n || Start || r_fifo_col_complete_p1) begin
 			r_blk_row <= 0;
 		end else if(r_out_fifo_1_rd_en_p1) begin
 			 case(r_FSM_row_former)
@@ -308,7 +308,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_dina
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_dina <= 0;
 		end else if(r_FSM_row_former == 7 && r_out_fifo_1_rd_en_p1) begin
 			r_dina <= {output_layer_1_data, r_blk_row[55:0]};
@@ -318,7 +318,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_wea
-		if(~reset_n) begin
+		if(~reset_n || Start) begin
 			r_wea <= 0;
 		end else begin
 			r_wea <= (r_FSM_row_former == 7 && r_out_fifo_1_rd_en_p1) || r_fifo_col_complete_p1 ? 1 : 0;
@@ -340,7 +340,7 @@ module output_layer# (
 	// data and addra
 	//wire row_complete = out_fifo_1_rd_en && r_fifo_col_almost_end;
 	always @(posedge clk) begin : proc_r_blk_write_offset
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_blk_write_offset <= 0;
 		end else if(r_fifo_col_complete_p2)begin
 			r_blk_write_offset <= r_blk_write_offset + 1;
@@ -348,7 +348,7 @@ module output_layer# (
 	end
 
 	always @(posedge clk) begin : proc_r_addra
-		if(~reset_n | Start | r_fifo_col_complete_p2) begin
+		if(~reset_n || Start || r_fifo_col_complete_p2) begin
 			r_addra <= 0;
 		end else if(r_wea)begin
 			r_addra <= r_addra + 1;;
@@ -358,18 +358,29 @@ module output_layer# (
 	wire [7:0] w_blk_addra = {r_blk_write_offset, r_addra[5:0]};
 	wire [7:0] w_addrb;
 	// creating a dual block ram instance
-	dual_buffer dual_buffer_inst_0
-  (
-	    .clka(clk),
-	    .ena(1'b1), 
-	    .wea(r_wea), 
-	    .addra(w_blk_addra), 
-	    .dina(r_dina),
-	    .clkb(clk),
-	    .enb(1'b1), 
-	    .addrb(w_addrb), 
-	    .doutb(M_axi_wdata) 
-  );
+	// dual_buffer dual_buffer_inst_0
+ //  (
+	//     .clka(clk),
+	//     .ena(1'b1), 
+	//     .wea(r_wea), 
+	//     .addra(w_blk_addra), 
+	//     .dina(r_dina),
+	//     .clkb(clk),
+	//     .enb(1'b1), 
+	//     .addrb(w_addrb), 
+	//     .doutb(M_axi_wdata) 
+ //  );
+
+ // altera
+  	dual_buffer dual_buffer_inst_0
+	(
+		.clock(clk),
+		.data(r_dina),
+		.rdaddress(w_addrb),
+		.wraddress(w_blk_addra),
+		.wren(r_wea),
+		.q(M_axi_wdata)
+	);
  
 
 
@@ -380,7 +391,7 @@ module output_layer# (
 
  	
  	always @(posedge clk) begin : proc_r_axi_row_write_complete
- 		if(~reset_n | Start) begin
+ 		if(~reset_n || Start) begin
  			r_axi_row_write_complete <= 0;
  		end else begin
  			r_axi_row_write_complete <= row_finished;
@@ -388,9 +399,9 @@ module output_layer# (
  	end
 
  	always @(posedge clk) begin : proc_r_input_layer_id_axi
- 		if(~reset_n | Start) begin
+ 		if(~reset_n || Start) begin
  			r_input_layer_id_axi <= 0;
- 		end else if(r_axi_row_write_complete && r_input_layer_id_axi >= no_of_input_layers - 1) begin
+ 		end else if(r_axi_row_write_complete && r_input_layer_id_axi >= no_of_output_layers - 1) begin
  			r_input_layer_id_axi <= 0;
  		end else if(r_axi_row_write_complete) begin
  			r_input_layer_id_axi <= r_input_layer_id_axi + 1;
@@ -398,15 +409,15 @@ module output_layer# (
  	end
 
  	always @(posedge clk) begin : proc_r_row_id_axi
- 		if(~reset_n | Start) begin
+ 		if(~reset_n || Start) begin
  			r_row_id_axi <= 0;
- 		end else if(r_axi_row_write_complete && r_input_layer_id_axi >= no_of_input_layers - 1) begin
+ 		end else if(r_axi_row_write_complete && r_input_layer_id_axi >= no_of_output_layers - 1) begin
  			r_row_id_axi <= r_row_id_axi + 1;
  		end
  	end
 
  	always @(posedge clk) begin : proc_r_blk_read_offset
- 		if(~reset_n) begin
+ 		if(~reset_n || Start) begin
  			r_blk_read_offset <= 0;
  		end else if(r_axi_row_write_complete) begin
  			r_blk_read_offset <= r_blk_read_offset + 1;
@@ -415,7 +426,7 @@ module output_layer# (
 
 
  	always @(posedge clk) begin : proc_r_addrb
- 		if(~reset_n | Start | r_axi_row_write_complete) begin
+ 		if(~reset_n || Start || r_axi_row_write_complete) begin
  			r_addrb <= 0;
  		end else if(r_axi_write_FSM <= 4'b0010 && M_axi_wready) begin
  			r_addrb <= r_addrb + 1;
@@ -456,7 +467,7 @@ module output_layer# (
 	always @(posedge clk) begin : proc_r_row_base_address_counter
 		if(~reset_n || Start) begin
 			r_row_base_address_counter <= 0;
-		end else if ((r_input_layer_id_axi >= no_of_input_layers -1) && row_finished) begin
+		end else if ((r_input_layer_id_axi >= no_of_output_layers -1) && row_finished) begin
 			r_row_base_address_counter <= r_row_base_address_counter + allocated_space_per_row;
 		end
 	end
@@ -498,7 +509,7 @@ module output_layer# (
 	reg[3:0] r_axi_write_FSM;
 
 	always @(posedge clk) begin : proc_r_row_write_FSM
-		if(~reset_n | Start) begin
+		if(~reset_n || Start) begin
 			r_row_write_FSM <= 0;
 		end else begin
 			case(r_row_write_FSM)
