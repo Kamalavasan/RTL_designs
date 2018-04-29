@@ -10,7 +10,7 @@ module kernel_loader #(
 	// input from parameter fetcher
 	// skip unnecessary fifos
 	input															Start,
-	input 					[2:0] 									skip_en,
+	input 					[4:0] 									skip_en,
 
 	input  wire 			[31:0]									kernel_0_start_addr,
 	input  wire 			[31:0]									kernel_0_end_addr,
@@ -129,7 +129,7 @@ module kernel_loader #(
 	assign M_axi_wstrb  = {(C_S_AXI_DATA_WIDTH/8){1'b0}}; 
 
 	// Read Address COntrol Signals
-	assign M_axi_arid = 1;
+	assign M_axi_arid = 3'b001;
 	assign M_axi_araddr = r_read_axi_addr;
 	assign M_axi_arlen = C_S_AXI_BURST_LEN - 1;
 	assign M_axi_arsize = $clog2(C_S_AXI_DATA_WIDTH/8);
@@ -142,6 +142,7 @@ module kernel_loader #(
 
 
     reg [2:0] r_fifo_select;
+    reg [2:0] r_fifo_select_p1;
 
     // kernel address trackers
     reg [31:0] r_kernel_0_addr;
@@ -228,11 +229,34 @@ module kernel_loader #(
     reg [31:0] r_read_axi_addr;
     assign read_burst_done = M_axi_rready & M_axi_rvalid & M_axi_rlast;
 
-    wire fifo_0_push_done = ((r_addr_tracker >= kernel_0_end_addr) && ~kernel_0_wrap_en ? 1 : 0);
-    wire fifo_1_push_done = ((r_addr_tracker >= kernel_1_end_addr) && ~kernel_1_wrap_en ? 1 : 0);
-    wire fifo_2_push_done = ((r_addr_tracker >= kernel_2_end_addr) && ~kernel_2_wrap_en ? 1 : 0);
-    wire fifo_3_push_done = ((r_addr_tracker >= kernel_3_end_addr) && ~kernel_3_wrap_en ? 1 : 0);
-    wire fifo_4_push_done = ((r_addr_tracker >= kernel_4_end_addr) && ~kernel_4_wrap_en ? 1 : 0);
+    wire w_fifo_0_push_done = ((r_kernel_0_addr >= kernel_0_end_addr) && ~kernel_0_wrap_en ? 1 : 0);
+    wire w_fifo_1_push_done = ((r_kernel_1_addr >= kernel_1_end_addr) && ~kernel_1_wrap_en ? 1 : 0);
+    wire w_fifo_2_push_done = ((r_kernel_2_addr >= kernel_2_end_addr) && ~kernel_2_wrap_en ? 1 : 0);
+    wire w_fifo_3_push_done = ((r_kernel_3_addr >= kernel_3_end_addr) && ~kernel_3_wrap_en ? 1 : 0);
+    wire w_fifo_4_push_done = ((r_kernel_4_addr >= kernel_4_end_addr) && ~kernel_4_wrap_en ? 1 : 0);
+
+
+    reg fifo_0_push_done;
+    reg fifo_1_push_done;
+    reg fifo_2_push_done;
+    reg fifo_3_push_done;
+    reg fifo_4_push_done;
+
+    always @(posedge clk) begin : proc_fifo_push_done
+        if(~reset_n | Start) begin
+            fifo_0_push_done <= 0;
+            fifo_1_push_done <= 0;
+            fifo_2_push_done <= 0;
+            fifo_3_push_done <= 0;
+            fifo_4_push_done <= 0;
+        end else begin
+            fifo_0_push_done <= w_fifo_0_push_done ? 1 : fifo_0_push_done;
+            fifo_1_push_done <= w_fifo_1_push_done ? 1 : fifo_1_push_done;
+            fifo_2_push_done <= w_fifo_2_push_done ? 1 : fifo_2_push_done;
+            fifo_3_push_done <= w_fifo_3_push_done ? 1 : fifo_3_push_done;
+            fifo_4_push_done <= w_fifo_4_push_done ? 1 : fifo_4_push_done;
+        end
+    end
 
     always @(posedge clk) begin : proc_r_fifo_select
     	if(~reset_n | Start) begin
@@ -240,31 +264,31 @@ module kernel_loader #(
     	end else begin
     		case(r_fifo_select)
     		 	3'b000 :begin 
-                            if((skip_en[0] || r_fifo_0_almost_full) || (fifo_0_push_done && axi_read_FSM != 4'b0001)) 
+                            if(skip_en[0] || (r_fifo_0_almost_full || fifo_0_push_done) && axi_read_FSM == 4'b0000) 
                                 r_fifo_select <= 3'b001; 
                             else if(read_burst_done) 
                                 r_fifo_select <= 3'b001; 
                         end
     		 	3'b001 :begin 
-                            if((skip_en[1] || r_fifo_1_almost_full) || (fifo_1_push_done && axi_read_FSM != 4'b0001)) 
+                            if(skip_en[1] || (r_fifo_1_almost_full || fifo_1_push_done) && axi_read_FSM == 4'b0000) 
                                 r_fifo_select <= 3'b010; 
                             else if(read_burst_done) 
                                 r_fifo_select <= 3'b010; 
                         end
     			3'b010 :begin 
-                            if((skip_en[2] || r_fifo_2_almost_full) || (fifo_2_push_done && axi_read_FSM != 4'b0001)) 
+                            if(skip_en[2] || (r_fifo_2_almost_full || fifo_2_push_done) && axi_read_FSM == 4'b0000) 
                                 r_fifo_select <= 3'b011; 
                             else if(read_burst_done) 
                                 r_fifo_select <= 3'b011; 
                         end
                 3'b011 :begin 
-                            if((skip_en[2] || r_fifo_2_almost_full) || (fifo_2_push_done && axi_read_FSM != 4'b0001)) 
+                            if(skip_en[2] || (r_fifo_2_almost_full || fifo_2_push_done) && axi_read_FSM == 4'b0000) 
                                 r_fifo_select <= 3'b100; 
                             else if(read_burst_done) 
                                 r_fifo_select <= 3'b100; 
                         end
                 3'b100 :begin 
-                            if((skip_en[2] || r_fifo_2_almost_full) || (fifo_2_push_done && axi_read_FSM != 4'b0001)) 
+                            if(skip_en[2] || (r_fifo_2_almost_full || fifo_2_push_done) && axi_read_FSM == 4'b0000) 
                                 r_fifo_select <= 3'b000; 
                             else if(read_burst_done) 
                                 r_fifo_select <= 3'b000; 
@@ -272,6 +296,14 @@ module kernel_loader #(
     			default : r_fifo_select <= 3'b000;
     		endcase
     	end
+    end
+
+    always @(posedge clk) begin : proc_r_fifo_select_p1
+        if(~reset_n) begin
+            r_fifo_select_p1 <= 0;
+        end else begin
+            r_fifo_select_p1 <= r_fifo_select;
+        end
     end
 
 
@@ -283,8 +315,8 @@ module kernel_loader #(
     		r_kernel_0_addr <= 0;
     	end else if(Start || (kernel_0_wrap_en && (kernel_0_end_addr <= kernel_0_start_addr))) begin
     		r_kernel_0_addr <= kernel_0_start_addr;
-    	end else if(r_fifo_select == 3'b000 && addres_set_done ) begin
-    		r_kernel_0_addr <= r_kernel_0_addr + C_S_AXI_BURST_LEN * 8;
+    	end else if(r_fifo_select == 3'b000 && valid_rd_data ) begin
+    		r_kernel_0_addr <= r_kernel_0_addr +  8;
     	end
     end
 
@@ -295,8 +327,8 @@ module kernel_loader #(
     		r_kernel_1_addr <= 0;
     	end else if(Start || (kernel_1_wrap_en && (kernel_1_end_addr <= kernel_1_start_addr))) begin
     		r_kernel_1_addr <= kernel_1_start_addr;
-    	end else if(r_fifo_select == 3'b001 && addres_set_done) begin
-    		r_kernel_1_addr <= r_kernel_1_addr + C_S_AXI_BURST_LEN * 8;
+    	end else if(r_fifo_select == 3'b001 && valid_rd_data) begin
+    		r_kernel_1_addr <= r_kernel_1_addr +  8;
     	end
     end
 
@@ -307,8 +339,8 @@ module kernel_loader #(
     		r_kernel_2_addr <= 0;
     	end else if(Start || (kernel_2_wrap_en && (kernel_2_end_addr <= kernel_2_start_addr))) begin
     		r_kernel_2_addr <= kernel_2_start_addr;
-    	end else if(r_fifo_select == 3'b010 && addres_set_done) begin
-    		r_kernel_2_addr <= r_kernel_2_addr + C_S_AXI_BURST_LEN * 8;
+    	end else if(r_fifo_select == 3'b010 && valid_rd_data) begin
+    		r_kernel_2_addr <= r_kernel_2_addr +  8;
     	end
     end
 
@@ -319,8 +351,8 @@ module kernel_loader #(
             r_kernel_3_addr <= 0;
         end else if(Start || (kernel_2_wrap_en && (kernel_3_end_addr <= kernel_3_start_addr))) begin
             r_kernel_3_addr <= kernel_2_start_addr;
-        end else if(r_fifo_select == 3'b011 && addres_set_done) begin
-            r_kernel_3_addr <= r_kernel_3_addr + C_S_AXI_BURST_LEN * 8;
+        end else if(r_fifo_select == 3'b011 && valid_rd_data) begin
+            r_kernel_3_addr <= r_kernel_3_addr +  8;
         end
     end
 
@@ -331,8 +363,8 @@ module kernel_loader #(
             r_kernel_4_addr <= 0;
         end else if(Start || (kernel_2_wrap_en && (kernel_4_end_addr <= kernel_4_start_addr))) begin
             r_kernel_4_addr <= kernel_4_start_addr;
-        end else if(r_fifo_select == 3'b100 && addres_set_done) begin
-            r_kernel_4_addr <= r_kernel_4_addr + C_S_AXI_BURST_LEN * 8;
+        end else if(r_fifo_select == 3'b100 && valid_rd_data) begin
+            r_kernel_4_addr <= r_kernel_4_addr +  8;
         end
     end
 
@@ -487,11 +519,12 @@ module kernel_loader #(
 			axi_read_FSM <= 0;
 		end else begin
 			case(axi_read_FSM) 
-				4'b0000 : if(M_axi_arvalid && M_axi_arready) axi_read_FSM <= 4'b0001;
-				4'b0001 : if(M_axi_rready & M_axi_rvalid & M_axi_rlast) axi_read_FSM <= 4'b0010;
+                4'b0000 : if(r_fifo_select == r_fifo_select_p1) axi_read_FSM <= 4'b0001;
+				4'b0001 : if(M_axi_arvalid && M_axi_arready) axi_read_FSM <= 4'b0010;
+				4'b0010 : if(M_axi_rready & M_axi_rvalid & M_axi_rlast) axi_read_FSM <= 4'b0011;
 				// delaying state machine to synchronise with  fifo select
-				4'b0010 : axi_read_FSM <= 4'b0011;
-				4'b0011 : axi_read_FSM <= 4'b0000;
+				4'b0011 : axi_read_FSM <= 4'b0100;
+				4'b0100 : axi_read_FSM <= 4'b0000;
 				default : axi_read_FSM <= 4'b0000;
 			endcase
 		end
@@ -507,21 +540,11 @@ module kernel_loader #(
     end
     assign M_axi_rready = r_M_axi_rready;
 
-
-    reg[31:0] r_counter_read;
-    always @(posedge clk) begin 
-        if(~reset_n || r_counter_read > 32'h10000000) 
-            r_counter_read <= 32'h01000000;
-        else if(M_axi_arvalid && M_axi_arready) 
-            r_counter_read <= r_counter_read + (C_S_AXI_DATA_WIDTH * (C_S_AXI_BURST_LEN))/8;
-    end
-
-
     reg r_M_axi_arvalid;
     always @(posedge clk) begin
         if(~reset_n || (M_axi_arvalid && M_axi_arready)) begin
             r_M_axi_arvalid <= 0;
-        end else if(axi_read_FSM == 4'b0000 & ~r_M_axi_arvalid) begin
+        end else if(axi_read_FSM == 4'b0001 & ~r_M_axi_arvalid) begin
             r_M_axi_arvalid <= 1;
         end
     end
