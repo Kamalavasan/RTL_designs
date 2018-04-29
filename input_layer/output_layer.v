@@ -106,6 +106,7 @@ module output_layer# (
 
 	reg [9:0] r_input_layer_id_fifo;
 	reg [9:0] r_col_id_fifo;
+	reg [9:0] r_8byte_col_size;
 	reg [9:0] r_row_id_fifo;
 
 	reg [9:0] r_row_id_axi;
@@ -153,6 +154,14 @@ module output_layer# (
 		end
 	end
 
+
+	always @(posedge clk) begin : proc_r_8byte_col_size
+		if(~reset_n) begin
+			r_8byte_col_size <= 0;
+		end else if(Start) begin
+			r_8byte_col_size <= (output_layer_col_size[2:0] == 0 ? output_layer_col_size[9:3] : output_layer_col_size[9:3] + 1);
+		end
+	end
 
 
 
@@ -339,24 +348,24 @@ module output_layer# (
 	// need to adjust this signal to sync with
 	// data and addra
 	//wire row_complete = out_fifo_1_rd_en && r_fifo_col_almost_end;
-	always @(posedge clk) begin : proc_r_blk_write_offset
-		if(~reset_n || Start) begin
-			r_blk_write_offset <= 0;
-		end else if(r_fifo_col_complete_p2)begin
-			r_blk_write_offset <= r_blk_write_offset + 1;
-		end
-	end
+	// always @(posedge clk) begin : proc_r_blk_write_offset
+	// 	if(~reset_n || Start) begin
+	// 		r_blk_write_offset <= 0;
+	// 	end else if(r_fifo_col_complete_p2)begin
+	// 		r_blk_write_offset <= r_blk_write_offset + 1;
+	// 	end
+	// end
 
-	always @(posedge clk) begin : proc_r_addra
-		if(~reset_n || Start || r_fifo_col_complete_p2) begin
-			r_addra <= 0;
-		end else if(r_wea)begin
-			r_addra <= r_addra + 1;;
-		end
-	end
+	// always @(posedge clk) begin : proc_r_addra
+	// 	if(~reset_n || Start || r_fifo_col_complete_p2) begin
+	// 		r_addra <= 0;
+	// 	end else if(r_wea)begin
+	// 		r_addra <= r_addra + 1;;
+	// 	end
+	// end
 
-	wire [7:0] w_blk_addra = {r_blk_write_offset, r_addra[5:0]};
-	wire [7:0] w_addrb;
+	// wire [7:0] w_blk_addra = {r_blk_write_offset, r_addra[5:0]};
+	// wire [7:0] w_addrb;
 	// creating a dual block ram instance
 	// dual_buffer dual_buffer_inst_0
  //  (
@@ -371,17 +380,34 @@ module output_layer# (
 	//     .doutb(M_axi_wdata) 
  //  );
 
+  wire [7:0] w_data_count;
+
+  wire w_fifo_rd_en = M_axi_wvalid && M_axi_wready && ~r_hold_fifo_rd;
+  out_buffer out_buffer_inst
+  (
+    .clk 				(clk), 
+    .srst 				(~reset_n), 
+    .din 				(r_dina),
+    .wr_en 				(r_wea), 
+    .rd_en 				(w_fifo_rd_en), 
+    .dout 				(M_axi_wdata), 
+    .full 				(), 
+    .empty 				(), 
+    .data_count 		(w_data_count)	 
+  );
+
  // altera
-  	dual_buffer dual_buffer_inst_0
-	(
-		.clock(clk),
-		.data(r_dina),
-		.rdaddress(w_addrb),
-		.wraddress(w_blk_addra),
-		.wren(r_wea),
-		.q(M_axi_wdata)
-	);
+ //  	dual_buffer dual_buffer_inst_0
+	// (
+	// 	.clock(clk),
+	// 	.data(r_dina),
+	// 	.rdaddress(w_addrb),
+	// 	.wraddress(w_blk_addra),
+	// 	.wren(r_wea),
+	// 	.q(M_axi_wdata)
+	// );
  
+
 
 
 
@@ -416,37 +442,57 @@ module output_layer# (
  		end
  	end
 
- 	always @(posedge clk) begin : proc_r_blk_read_offset
- 		if(~reset_n || Start) begin
- 			r_blk_read_offset <= 0;
- 		end else if(r_axi_row_write_complete) begin
- 			r_blk_read_offset <= r_blk_read_offset + 1;
- 		end
- 	end
+ 	// always @(posedge clk) begin : proc_r_blk_read_offset
+ 	// 	if(~reset_n || Start) begin
+ 	// 		r_blk_read_offset <= 0;
+ 	// 	end else if(r_axi_row_write_complete) begin
+ 	// 		r_blk_read_offset <= r_blk_read_offset + 1;
+ 	// 	end
+ 	// end
 
 
- 	always @(posedge clk) begin : proc_r_addrb
+ 	// always @(posedge clk) begin : proc_r_addrb
+ 	// 	if(~reset_n || Start || r_axi_row_write_complete) begin
+ 	// 		r_addrb <= 0;
+ 	// 	end else if(r_axi_write_FSM == 4'b0010 && M_axi_wready) begin
+ 	// 		r_addrb <= r_addrb + 1;
+ 	// 	end
+ 	// end
+ 	// assign w_addrb = {r_blk_read_offset, r_addrb};
+
+ 	reg [9:0] r_fifo_8byte_rd_couter;
+ 	always @(posedge clk) begin : proc_r_fifo_8byte_rd_couter
  		if(~reset_n || Start || r_axi_row_write_complete) begin
- 			r_addrb <= 0;
- 		end else if(r_axi_write_FSM == 4'b0010 && M_axi_wready) begin
- 			r_addrb <= r_addrb + 1;
+ 			r_fifo_8byte_rd_couter <= 0;
+ 		end else if(M_axi_wready && M_axi_wvalid && r_axi_write_FSM == 4'b0010) begin
+ 			r_fifo_8byte_rd_couter <= r_fifo_8byte_rd_couter + 1;
  		end
  	end
- 	assign w_addrb = {r_blk_read_offset, r_addrb};
 
- 	reg r_M_axi_wvalid_0;
- 	reg r_M_axi_wvalid_1;
-
+ 	reg r_M_axi_wvalid;
+ 	reg r_hold_fifo_rd;
  	always @(posedge clk) begin : proc_r_M_axi_wvalid_1
  		if(~reset_n || Start || (r_axi_write_FSM == 4'b0010 && M_axi_wvalid && M_axi_wready && M_axi_wlast)) begin
- 			r_M_axi_wvalid_0 <= 0;
- 			r_M_axi_wvalid_1 <= 0;
- 		end else begin
- 			r_M_axi_wvalid_0 <= (r_axi_write_FSM == 4'b0010 && M_axi_wready) ? 1 : 0;
- 			r_M_axi_wvalid_1 <= r_M_axi_wvalid_0;
+ 			r_M_axi_wvalid <= 0;
+ 		end else if(r_axi_write_FSM == 4'b0010 && (r_fifo_8byte_rd_couter >= r_8byte_col_size)) begin
+ 			r_M_axi_wvalid <= 1;
+ 		end else if(r_axi_write_FSM == 4'b0010 && w_data_count >= 2) begin
+ 			r_M_axi_wvalid <= 1;
+ 		end else if(r_axi_write_FSM == 4'b0010 && w_data_count  == 1 && ~r_M_axi_wvalid) begin
+ 			r_M_axi_wvalid <= 1;
+ 		end  else begin
+ 			r_M_axi_wvalid <= 0;
  		end
  	end
- 	assign M_axi_wvalid = r_M_axi_wvalid_1;
+
+ 	always @(posedge clk) begin : proc_r_hold_fifo_rd
+ 		if(~reset_n || Start || r_axi_row_write_complete) begin
+ 			r_hold_fifo_rd <= 0;
+ 		end else if(r_fifo_8byte_rd_couter >= r_8byte_col_size || (r_fifo_8byte_rd_couter == r_8byte_col_size - 1 && M_axi_wready && M_axi_wvalid))begin
+ 			r_hold_fifo_rd <= 1;
+ 		end
+ 	end
+ 	assign M_axi_wvalid = r_M_axi_wvalid;
 
 //********************************************************************************
 //********** AXI Write **********************************************************
@@ -576,7 +622,7 @@ module output_layer# (
     always @(posedge clk) begin
 	    if(~reset_n || Start || (r_M_axi_wlast && M_axi_wvalid && M_axi_wready))
 	        r_M_axi_wlast <= 0;
-	    else if((r_M_w_burst_count == M_axi_awlen -1) && M_axi_wvalid && M_axi_wready)
+	    else if((r_M_w_burst_count == M_axi_awlen -1) && M_axi_wvalid && M_axi_wready || (r_M_w_burst_count == M_axi_awlen && r_axi_write_FSM == 4'b0010))
 	        r_M_axi_wlast <= 1;
 	    else
 	        r_M_axi_wlast <= 0;

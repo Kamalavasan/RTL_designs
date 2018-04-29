@@ -195,7 +195,7 @@ module top_sim();
 			.larger_block_en 							(1'b0),
 			.allocated_space_per_row 					(64),
 			.burst_per_row 								(1),
-			.write_burst_len 							(6),
+			.write_burst_len 							(7),
 
 
 			.output_layer_1_data						(output_layer_1_data),
