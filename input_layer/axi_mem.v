@@ -70,6 +70,15 @@
 		output  wire 			[31:0]									kernel_2_end_addr,
 		output															kernel_2_wrap_en,
 
+		output  wire 			[31:0]									kernel_3_start_addr,
+		output  wire 			[31:0]									kernel_3_end_addr,
+		output															kernel_3_wrap_en,
+
+		output  wire 			[31:0]									kernel_4_start_addr,
+		output  wire 			[31:0]									kernel_4_end_addr,
+		output															kernel_4_wrap_en,
+
+
 		// parameters for output layer
 
 		output  wire 			[15:0] 									No_of_output_layers,
@@ -691,6 +700,14 @@
 	// 0x00000044 -------        kernel2 - AXI address start
 	// 0x00000048 -------        kernel2 - AXI end address
 
+	// 0x00000050 -------        kernel3 settings 
+	// 0x00000054 -------        kernel3 - AXI address start
+	// 0x00000058 -------        kernel3 - AXI end address
+
+	// 0x00000060 -------        kernel4 settings 
+	// 0x00000064 -------        kernel4 - AXI address start
+	// 0x00000068 -------        kernel4 - AXI end address
+
 
 			// output layer parameters
 	// 0x00000080 -------        (byte0, byte1 = No of output layers ) 
@@ -736,6 +753,14 @@
 		reg [31:0] r_kernel2_settings;
 		reg [31:0] r_kernel2_axi_start_addr;
 		reg [31:0] r_kernel2_axi_end_addr;
+
+		reg [31:0] r_kernel3_settings;
+		reg [31:0] r_kernel3_axi_start_addr;
+		reg [31:0] r_kernel3_axi_end_addr;
+
+		reg [31:0] r_kernel4_settings;
+		reg [31:0] r_kernel4_axi_start_addr;
+		reg [31:0] r_kernel4_axi_end_addr;
 
 	// parameters for output layers
 		reg [15:0] r_No_of_output_layers;
@@ -894,6 +919,54 @@
 		end
 		//-------------------------------------------------------------
 
+		// kernel 3
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel3_settings
+			if(~S_AXI_ARESETN) begin
+				r_kernel3_settings <= 0;
+			end else if(mem_wren && mem_address == 20) begin
+				r_kernel3_settings <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel3_axi_start_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel3_axi_start_addr <= 0;
+			end else if(mem_wren && mem_address == 21) begin
+				r_kernel3_axi_start_addr <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel3_axi_end_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel3_axi_end_addr <= 0;
+			end else if(mem_wren && mem_address == 22) begin
+				r_kernel3_axi_end_addr <= S_AXI_WDATA;
+			end
+		end
+		//-------------------------------------------------------------
+
+		// kernel 4
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel4_settings
+			if(~S_AXI_ARESETN) begin
+				r_kernel4_settings <= 0;
+			end else if(mem_wren && mem_address == 24) begin
+				r_kernel4_settings <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel4_axi_start_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel4_axi_start_addr <= 0;
+			end else if(mem_wren && mem_address == 25) begin
+				r_kernel4_axi_start_addr <= S_AXI_WDATA;
+			end
+		end
+		always @(posedge S_AXI_ACLK) begin : proc_r_kernel4_axi_end_addr
+			if(~S_AXI_ARESETN) begin
+				r_kernel4_axi_end_addr <= 0;
+			end else if(mem_wren && mem_address == 26) begin
+				r_kernel4_axi_end_addr <= S_AXI_WDATA;
+			end
+		end
+		//-------------------------------------------------------------
+
 		// output layer parameters
 		always @(posedge S_AXI_ACLK) begin : proc_r_No_of_output_layers
 			if(~S_AXI_ARESETN) begin
@@ -973,6 +1046,14 @@
 		assign kernel_2_start_addr =  r_kernel2_axi_start_addr;
 		assign kernel_2_end_addr =  r_kernel2_axi_end_addr;
 		assign kernel_2_wrap_en =  r_kernel2_settings[0];
+
+		assign kernel_3_start_addr =  r_kernel3_axi_start_addr;
+		assign kernel_3_end_addr =  r_kernel3_axi_end_addr;
+		assign kernel_3_wrap_en =  r_kernel3_settings[0];
+
+		assign kernel_4_start_addr =  r_kernel4_axi_start_addr;
+		assign kernel_4_end_addr =  r_kernel4_axi_end_addr;
+		assign kernel_4_wrap_en =  r_kernel4_settings[0];
 
 		// specific parameter - output layer
 		assign No_of_output_layers = r_No_of_output_layers;
