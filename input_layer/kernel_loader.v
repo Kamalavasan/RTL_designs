@@ -117,7 +117,7 @@ module kernel_loader #(
 	assign M_axi_awid = 0;
 	assign M_axi_awaddr = 32'h0;
 	assign M_axi_awlen = C_S_AXI_BURST_LEN-1;
-	assign M_axi_awsize = $clog2(C_S_AXI_DATA_WIDTH/8);
+	assign M_axi_awsize = 3; //$clog2(C_S_AXI_DATA_WIDTH/8);
 	assign M_axi_awburst = 1;
 	assign M_axi_awlock = 0;
 	assign M_axi_awcache = 4'b0011;
@@ -132,7 +132,7 @@ module kernel_loader #(
 	assign M_axi_arid = 3'b001;
 	assign M_axi_araddr = r_read_axi_addr;
 	assign M_axi_arlen = C_S_AXI_BURST_LEN - 1;
-	assign M_axi_arsize = $clog2(C_S_AXI_DATA_WIDTH/8);
+	assign M_axi_arsize = 3; //$clog2(C_S_AXI_DATA_WIDTH/8);
 	assign M_axi_arburst = 1;
 	assign M_axi_arlock = 0;
 	assign M_axi_arcache = 4'b0011;

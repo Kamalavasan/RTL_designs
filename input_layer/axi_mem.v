@@ -56,7 +56,7 @@
 
 		// parameters for kernel loader
 
-		output 					[2:0]									skip_en,
+		output 					[4:0]									skip_en,
 
 		output  wire 			[31:0]									kernel_0_start_addr,
 		output  wire 			[31:0]									kernel_0_end_addr,
@@ -1033,7 +1033,7 @@
 		assign No_of_squeeze_layers = r_No_of_squeeze_layers;
 
 		// specific parameter - kernel loader
-		assign skip_en = {r_kernel2_settings[1], r_kernel1_settings[1], r_kernel0_settings[1]};
+		assign skip_en = {r_kernel4_settings[1], r_kernel3_settings[1], r_kernel2_settings[1], r_kernel1_settings[1], r_kernel0_settings[1]};
 
 		assign kernel_0_start_addr = r_kernel0_axi_start_addr ;
 		assign kernel_0_end_addr =  r_kernel0_axi_end_addr;
