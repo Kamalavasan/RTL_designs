@@ -185,18 +185,18 @@ module top_sim();
 	// input from parameter fetcher
 	// skip unnecessary fifos
 	.Start 													(Start),
-	.skip_en 												(4'b1110),
+	.skip_en 												(4'b1100),
 
 	.kernel_0_start_addr									(32'h1000),
-	.kernel_0_end_addr										(32'h2000),
-	.kernel_0_wrap_en										(1'b0),
+	.kernel_0_end_addr										(32'h1fc8),
+	.kernel_0_wrap_en										(1'b1),
 	.kernel_0_fifo_wr_data									(),
 	.kernel_0_fifo_wr_en									(),
 	.kernel_0_fifo_count									(8'h40),
 
 
-	.kernel_1_start_addr									(32'h1000),
-	.kernel_1_end_addr										(32'h2000),
+	.kernel_1_start_addr									(32'h4000),
+	.kernel_1_end_addr										(32'h5000),
 	.kernel_1_wrap_en										(1'b0),
 	.kernel_1_fifo_wr_data									(),
 	.kernel_1_fifo_wr_en									(),
